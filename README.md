@@ -4,7 +4,7 @@ This is a Gymnasium environment for the game [Pathery](https://www.pathery.com/h
 
 ## Installation
 
-To install your new environment, run the following commands:
+To install this environment, run the following commands:
 
 ```{shell}
 cd pathery_env
