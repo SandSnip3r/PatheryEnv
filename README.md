@@ -1,6 +1,6 @@
 # Pathery Gymnasium Environment
 
-This is a Gymnasium environment for the game [Pathery](https://www.pathery.com).
+This is a Gymnasium environment for the game [Pathery](https://www.pathery.com/home).
 
 ## Installation
 
