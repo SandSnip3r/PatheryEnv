@@ -3,13 +3,7 @@ import gymnasium as gym
 from gymnasium import spaces
 import pygame
 import numpy as np
-
-
-class Actions(Enum):
-  right = 0
-  up = 1
-  left = 2
-  down = 3
+from collections import deque
 
 class CellType(Enum):
   OPEN = 0
@@ -23,18 +17,16 @@ class PatheryEnv(gym.Env):
 
   def __init__(self, render_mode=None):
     # Initialize grid size
-    self.grid_size = (2, 6)
+    self.gridSize = (2, 6)
 
     # Initialize grid with OPEN cells
-    self.grid = np.zeros(self.grid_size, dtype=np.int32)
+    self.grid = np.zeros(self.gridSize, dtype=np.int32)
 
     # Observation space: Each cell type is a discrete value
-    self.observation_space = spaces.MultiDiscrete(np.full((self.grid_size[0], self.grid_size[1]), len(CellType)))
-
-    self.window_size = 512  # The size of the PyGame window
+    self.observation_space = spaces.MultiDiscrete(np.full((self.gridSize[0], self.gridSize[1]), len(CellType)))
 
     # Possible actions are which 2d position to place a block in
-    self.action_space = spaces.MultiDiscrete((self.grid_size[0], self.grid_size[1]))
+    self.action_space = spaces.MultiDiscrete((self.gridSize[0], self.gridSize[1]))
 
     assert render_mode is None or render_mode in self.metadata["render_modes"]
     self.render_mode = render_mode
@@ -52,11 +44,14 @@ class PatheryEnv(gym.Env):
     # Set the number of blocks that the user can place
     self.remainingBlocks = 3
 
+    self.startPos = (0,0)
+    self.goalPos = (self.gridSize[0]-1, self.gridSize[1]-1)
+
     # Place the start in top left
-    self.grid[0][0] = CellType.START.value
+    self.grid[self.startPos[0]][self.startPos[1]] = CellType.START.value
 
     # Place the end in bottom right
-    self.grid[self.grid_size[0]-1][self.grid_size[1]-1] = CellType.GOAL.value
+    self.grid[self.goalPos[0]][self.goalPos[1]] = CellType.GOAL.value
 
     observation = self._get_obs()
     info = self._get_info()
@@ -64,7 +59,40 @@ class PatheryEnv(gym.Env):
     return observation, info
 
   def calculateShortestPath(self):
+    # Directions for moving: right, left, down, up
+    directions = [(0, 1), (0, -1), (1, 0), (-1, 0)]
+    
+    # Create a queue for BFS and add the starting point
+    queue = deque([(self.startPos, 0)])
+    
+    # Set of visited nodes
+    visited = set()
+    visited.add(self.startPos)
+    
+    while queue:
+      # Get the current position and the path length to it
+      (current, pathLength) = queue.popleft()
+      
+      # If the current position is the goal, return the path
+      if current == self.goalPos:
+        return pathLength
+      
+      # Explore all the possible directions
+      for direction in directions:
+        # Calculate the next position
+        next_position = (current[0] + direction[0], current[1] + direction[1])
+        
+        # Check if the next position is within the grid bounds
+        if (0 <= next_position[0] < self.gridSize[0]) and (0 <= next_position[1] < self.gridSize[1]):
+          # Check if the next position is not an obstacle and not visited
+          if self.grid[next_position[0]][next_position[1]] in [CellType.OPEN.value, CellType.START.value, CellType.GOAL.value] and next_position not in visited:
+            # Add the next position to the queue and mark it as visited
+            queue.append((next_position, pathLength+1))
+            visited.add(next_position)
+    
+    # There is no path to the goal
     return 0
+
 
   def step(self, action):
     if self.grid[action[0]][action[1]] == CellType.OPEN.value:
@@ -73,8 +101,10 @@ class PatheryEnv(gym.Env):
     else:
       return self._get_obs(), -1, False, False, self._get_info()
     
-    terminated = self.remainingBlocks == 0
-    reward = self.calculateShortestPath() if terminated else 0
+    pathLength = self.calculateShortestPath()
+    
+    terminated = (self.remainingBlocks == 0 or pathLength == 0)
+    reward = (-1 if pathLength == 0 else pathLength) if terminated else 0
     observation = self._get_obs()
     info = self._get_info()
 
@@ -92,7 +122,7 @@ class PatheryEnv(gym.Env):
       CellType.START: 'S',  # Start
       CellType.GOAL: 'G'   # Goal
     }
-    top_border = "+" + "-" * (self.grid_size[1] * 2 - 1) + "+"
+    top_border = "+" + "-" * (self.gridSize[1] * 2 - 1) + "+"
     output = top_border + '\n'
     for row in self.grid:
       output += '|' + '|'.join(ansi_map[CellType(val)] for val in row) + '|\n'
@@ -101,6 +131,4 @@ class PatheryEnv(gym.Env):
     return output
 
   def close(self):
-    if self.window is not None:
-      pygame.display.quit()
-      pygame.quit()
+    pass

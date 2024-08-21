@@ -13,7 +13,11 @@ while not terminated:
   while reward < 0:
     action = env.action_space.sample()
     _, reward, terminated, _, _ = env.step(action)
+    if terminated:
+      break
   print(env.render())
+  if terminated:
+    print("Final reward: ", reward)
   # return observation, reward, terminated, False, info
 
 # low = np.array([0, 0, 0], dtype=int)
