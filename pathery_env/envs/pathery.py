@@ -15,12 +15,20 @@ class CellType(Enum):
 class PatheryEnv(gym.Env):
   metadata = {"render_modes": ["ansi"], "render_fps": 4}
 
-  def __init__(self, render_mode=None):
-    # Initialize grid size
-    self.gridSize = (2, 6)
-
+  def zeroGrid(self):
     # Initialize grid with OPEN cells
     self.grid = np.zeros(self.gridSize, dtype=np.int32)
+
+  def randomPos(self):
+    x = self.np_random.integers(low=0, high=self.gridSize[0], dtype=np.int32)
+    y = self.np_random.integers(low=0, high=self.gridSize[1], dtype=np.int32)
+    return (x,y)
+
+  def __init__(self, render_mode=None):
+    # Initialize grid size
+    self.gridSize = (6, 13)
+
+    self.zeroGrid()
 
     # Observation space: Each cell type is a discrete value
     self.observation_space = spaces.MultiDiscrete(np.full((self.gridSize[0], self.gridSize[1]), len(CellType)))
@@ -41,11 +49,36 @@ class PatheryEnv(gym.Env):
     # We need the following line to seed self.np_random
     super().reset(seed=seed)
 
-    # Set the number of blocks that the user can place
-    self.remainingBlocks = 3
+    self.zeroGrid()
 
-    self.startPos = (0,0)
-    self.goalPos = (self.gridSize[0]-1, self.gridSize[1]-1)
+    # Set the number of blocks that the user can place
+    self.remainingBlocks = 7
+
+    # Randomize start/goal
+    # self.startPos = self.randomPos()
+    # self.goalPos = self.startPos
+    # while self.goalPos == self.startPos:
+    #   self.goalPos = self.randomPos()
+
+    # Fixed start/goal
+    self.startPos = (1,0)
+    self.goalPos = (1,12)
+
+    # Fixed pre-placed blocks
+    self.grid[0][0] = CellType.BLOCKED_PRE_EXISTING.value
+    self.grid[2][0] = CellType.BLOCKED_PRE_EXISTING.value
+    self.grid[3][0] = CellType.BLOCKED_PRE_EXISTING.value
+    self.grid[4][0] = CellType.BLOCKED_PRE_EXISTING.value
+    self.grid[5][0] = CellType.BLOCKED_PRE_EXISTING.value
+    self.grid[0][12] = CellType.BLOCKED_PRE_EXISTING.value
+    self.grid[2][12] = CellType.BLOCKED_PRE_EXISTING.value
+    self.grid[3][12] = CellType.BLOCKED_PRE_EXISTING.value
+    self.grid[4][12] = CellType.BLOCKED_PRE_EXISTING.value
+    self.grid[5][12] = CellType.BLOCKED_PRE_EXISTING.value
+
+    self.grid[1][7] = CellType.BLOCKED_PRE_EXISTING.value
+    self.grid[2][9] = CellType.BLOCKED_PRE_EXISTING.value
+    self.grid[5][8] = CellType.BLOCKED_PRE_EXISTING.value
 
     # Place the start in top left
     self.grid[self.startPos[0]][self.startPos[1]] = CellType.START.value
@@ -99,7 +132,7 @@ class PatheryEnv(gym.Env):
       self.grid[action[0]][action[1]] = CellType.BLOCKED_PLAYER_PLACED.value
       self.remainingBlocks -= 1
     else:
-      return self._get_obs(), -1, False, False, self._get_info()
+      return self._get_obs(), -1, True, False, self._get_info()
     
     pathLength = self.calculateShortestPath()
     
