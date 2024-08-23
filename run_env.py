@@ -4,45 +4,21 @@ from enum import Enum
 import numpy as np
 env = gym.make('pathery_env/Pathery-v0', render_mode='ansi')
 
+env.reset()
+done = False
 
-for i in range(2):
-  env.reset()
+def readPair():
+  user_input = input("Enter two integers separated by space: ")
+  num1, num2 = user_input.split()
+  return (int(num1), int(num2))
+
+while not done:
   print(env.render())
-
-  terminated = False
-  while not terminated:
-    reward = -1
-    while reward < 0:
-      action = env.action_space.sample()
-      _, reward, terminated, _, _ = env.step(action)
-      if terminated:
-        break
+  pairInput = readPair()
+  while pairInput not in env.action_space:
+    print('invalid action')
+    pairInput = readPair()
+  observation, reward, done, _, info = env.step(pairInput)
+  print(f'Reward: {reward}, info: "{info}"')
+  if done:
     print(env.render())
-    if terminated:
-      print("Final reward: ", reward)
-    # return observation, reward, terminated, False, info
-
-# low = np.array([0, 0, 0], dtype=int)
-# high = np.array([1, 10, 100], dtype=int)
-# space = gym.spaces.Box(low=low, high=high, dtype=int)
-# for _ in range(100):
-#   print(space.sample())
-
-
-# class EnumType(Enum):
-#   OPEN = 0
-#   BLOCKED_PRE_EXISTING = 1
-#   BLOCKED_PLAYER_PLACED = 2
-#   START = 3
-#   GOAL = 4
-
-# width = 4
-# height = 5
-# testSpace = gym.spaces.MultiDiscrete(np.full((width, height), len(EnumType)))
-# # testSpace = gym.spaces.MultiDiscrete(([len(EnumType)]*width)*height)
-# print(testSpace)
-# print(testSpace.sample())
-
-# x = gym.spaces.MultiDiscrete((10,2))
-# print(x.sample())
-# print(x.sample())

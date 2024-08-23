@@ -5,18 +5,24 @@ import pygame
 import numpy as np
 from collections import deque
 
-class CellType(Enum):
+class InternalCellType(Enum):
   OPEN = 0
   BLOCKED_PRE_EXISTING = 1
   BLOCKED_PLAYER_PLACED = 2
   START = 3
   GOAL = 4
 
+class CellType(Enum):
+  OPEN = 0
+  BLOCKED = 1
+  START = 2
+  GOAL = 3
+
 class PatheryEnv(gym.Env):
   metadata = {"render_modes": ["ansi"], "render_fps": 4}
 
   def zeroGrid(self):
-    # Initialize grid with OPEN cells
+    # Initialize grid with OPEN cells (which have value 0)
     self.grid = np.zeros(self.gridSize, dtype=np.int32)
 
   def randomPos(self):
@@ -40,10 +46,24 @@ class PatheryEnv(gym.Env):
     self.render_mode = render_mode
 
   def _get_obs(self):
-    return self.grid
+    mapping = {
+      InternalCellType.OPEN.value: CellType.OPEN.value,
+      InternalCellType.BLOCKED_PRE_EXISTING.value: CellType.BLOCKED.value,
+      InternalCellType.BLOCKED_PLAYER_PLACED.value: CellType.BLOCKED.value,
+      InternalCellType.START.value: CellType.START.value,
+      InternalCellType.GOAL.value: CellType.GOAL.value
+    }
+
+    def transform(cell):
+      return mapping[cell]
+
+    vectorized_transform = np.vectorize(transform)
+    return vectorized_transform(self.grid)
 
   def _get_info(self):
-    return {}
+    return {
+      'Path length': self.lastPathLength
+    }
 
   def reset(self, seed=None, options=None):
     # We need the following line to seed self.np_random
@@ -65,26 +85,28 @@ class PatheryEnv(gym.Env):
     self.goalPos = (1,12)
 
     # Fixed pre-placed blocks
-    self.grid[0][0] = CellType.BLOCKED_PRE_EXISTING.value
-    self.grid[2][0] = CellType.BLOCKED_PRE_EXISTING.value
-    self.grid[3][0] = CellType.BLOCKED_PRE_EXISTING.value
-    self.grid[4][0] = CellType.BLOCKED_PRE_EXISTING.value
-    self.grid[5][0] = CellType.BLOCKED_PRE_EXISTING.value
-    self.grid[0][12] = CellType.BLOCKED_PRE_EXISTING.value
-    self.grid[2][12] = CellType.BLOCKED_PRE_EXISTING.value
-    self.grid[3][12] = CellType.BLOCKED_PRE_EXISTING.value
-    self.grid[4][12] = CellType.BLOCKED_PRE_EXISTING.value
-    self.grid[5][12] = CellType.BLOCKED_PRE_EXISTING.value
+    self.grid[0][0] = InternalCellType.BLOCKED_PRE_EXISTING.value
+    self.grid[2][0] = InternalCellType.BLOCKED_PRE_EXISTING.value
+    self.grid[3][0] = InternalCellType.BLOCKED_PRE_EXISTING.value
+    self.grid[4][0] = InternalCellType.BLOCKED_PRE_EXISTING.value
+    self.grid[5][0] = InternalCellType.BLOCKED_PRE_EXISTING.value
+    self.grid[0][12] = InternalCellType.BLOCKED_PRE_EXISTING.value
+    self.grid[2][12] = InternalCellType.BLOCKED_PRE_EXISTING.value
+    self.grid[3][12] = InternalCellType.BLOCKED_PRE_EXISTING.value
+    self.grid[4][12] = InternalCellType.BLOCKED_PRE_EXISTING.value
+    self.grid[5][12] = InternalCellType.BLOCKED_PRE_EXISTING.value
 
-    self.grid[1][7] = CellType.BLOCKED_PRE_EXISTING.value
-    self.grid[2][9] = CellType.BLOCKED_PRE_EXISTING.value
-    self.grid[5][8] = CellType.BLOCKED_PRE_EXISTING.value
+    self.grid[1][7] = InternalCellType.BLOCKED_PRE_EXISTING.value
+    self.grid[2][9] = InternalCellType.BLOCKED_PRE_EXISTING.value
+    self.grid[5][8] = InternalCellType.BLOCKED_PRE_EXISTING.value
 
     # Place the start in top left
-    self.grid[self.startPos[0]][self.startPos[1]] = CellType.START.value
+    self.grid[self.startPos[0]][self.startPos[1]] = InternalCellType.START.value
 
     # Place the end in bottom right
-    self.grid[self.goalPos[0]][self.goalPos[1]] = CellType.GOAL.value
+    self.grid[self.goalPos[0]][self.goalPos[1]] = InternalCellType.GOAL.value
+
+    self.lastPathLength = self.calculateShortestPath()
 
     observation = self._get_obs()
     info = self._get_info()
@@ -118,7 +140,7 @@ class PatheryEnv(gym.Env):
         # Check if the next position is within the grid bounds
         if (0 <= next_position[0] < self.gridSize[0]) and (0 <= next_position[1] < self.gridSize[1]):
           # Check if the next position is not an obstacle and not visited
-          if self.grid[next_position[0]][next_position[1]] in [CellType.OPEN.value, CellType.START.value, CellType.GOAL.value] and next_position not in visited:
+          if self.grid[next_position[0]][next_position[1]] in [InternalCellType.OPEN.value, InternalCellType.START.value, InternalCellType.GOAL.value] and next_position not in visited:
             # Add the next position to the queue and mark it as visited
             queue.append((next_position, pathLength+1))
             visited.add(next_position)
@@ -128,16 +150,23 @@ class PatheryEnv(gym.Env):
 
 
   def step(self, action):
-    if self.grid[action[0]][action[1]] == CellType.OPEN.value:
-      self.grid[action[0]][action[1]] = CellType.BLOCKED_PLAYER_PLACED.value
+    if self.grid[action[0]][action[1]] == InternalCellType.OPEN.value:
+      self.grid[action[0]][action[1]] = InternalCellType.BLOCKED_PLAYER_PLACED.value
       self.remainingBlocks -= 1
     else:
+      # Invalid position; reward is -1, episode terminates
       return self._get_obs(), -1, True, False, self._get_info()
     
     pathLength = self.calculateShortestPath()
-    
-    terminated = (self.remainingBlocks == 0 or pathLength == 0)
-    reward = (-1 if pathLength == 0 else pathLength) if terminated else 0
+
+    if pathLength == 0:
+      # Blocks path; reward is -1, episode terminates
+      return self._get_obs(), -1, True, False, self._get_info()
+
+    terminated = self.remainingBlocks == 0
+    reward = pathLength - self.lastPathLength
+    self.lastPathLength = pathLength
+
     observation = self._get_obs()
     info = self._get_info()
 
@@ -149,16 +178,16 @@ class PatheryEnv(gym.Env):
 
   def _render_ansi(self):
     ansi_map = {
-      CellType.OPEN: '░',  # Open cells
-      CellType.BLOCKED_PRE_EXISTING: '█',  # Blocked by pre-existing
-      CellType.BLOCKED_PLAYER_PLACED: '#',  # Blocked by player
-      CellType.START: 'S',  # Start
-      CellType.GOAL: 'G'   # Goal
+      InternalCellType.OPEN: '░',                  # Open cells
+      InternalCellType.BLOCKED_PRE_EXISTING: '█',  # Blocked by pre-existing
+      InternalCellType.BLOCKED_PLAYER_PLACED: '#', # Blocked by player
+      InternalCellType.START: 'S',                 # Start
+      InternalCellType.GOAL: 'G'                   # Goal
     }
     top_border = "+" + "-" * (self.gridSize[1] * 2 - 1) + "+"
     output = top_border + '\n'
     for row in self.grid:
-      output += '|' + '|'.join(ansi_map[CellType(val)] for val in row) + '|\n'
+      output += '|' + '|'.join(ansi_map[InternalCellType(val)] for val in row) + '|\n'
     output += top_border + '\n'
     output += f'Remaining blocks: {self.remainingBlocks}'
     return output
