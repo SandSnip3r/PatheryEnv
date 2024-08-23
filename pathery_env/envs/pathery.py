@@ -36,8 +36,10 @@ class PatheryEnv(gym.Env):
 
     self.zeroGrid()
 
+    self.maxCheckpointCount = 1
+
     # Observation space: Each cell type is a discrete value
-    self.observation_space = spaces.MultiDiscrete(np.full((self.gridSize[0], self.gridSize[1]), len(CellType)))
+    self.observation_space = spaces.MultiDiscrete(np.full((self.gridSize[0], self.gridSize[1]), len(CellType) + self.maxCheckpointCount))
 
     # Possible actions are which 2d position to place a block in
     self.action_space = spaces.MultiDiscrete((self.gridSize[0], self.gridSize[1]))
@@ -55,6 +57,8 @@ class PatheryEnv(gym.Env):
     }
 
     def transform(cell):
+      if cell >= len(InternalCellType):
+        return cell - (len(InternalCellType) - len(CellType))
       return mapping[cell]
 
     vectorized_transform = np.vectorize(transform)
@@ -72,7 +76,7 @@ class PatheryEnv(gym.Env):
     self.zeroGrid()
 
     # Set the number of blocks that the user can place
-    self.remainingBlocks = 7
+    self.remainingBlocks = 8
 
     # Randomize start/goal
     # self.startPos = self.randomPos()
@@ -81,30 +85,41 @@ class PatheryEnv(gym.Env):
     #   self.goalPos = self.randomPos()
 
     # Fixed start/goal
-    self.startPos = (1,0)
-    self.goalPos = (1,12)
+    self.startPos = (2,0)
+    self.goalPos = (0,12)
 
     # Fixed pre-placed blocks
     self.grid[0][0] = InternalCellType.BLOCKED_PRE_EXISTING.value
-    self.grid[2][0] = InternalCellType.BLOCKED_PRE_EXISTING.value
+    self.grid[1][0] = InternalCellType.BLOCKED_PRE_EXISTING.value
     self.grid[3][0] = InternalCellType.BLOCKED_PRE_EXISTING.value
     self.grid[4][0] = InternalCellType.BLOCKED_PRE_EXISTING.value
     self.grid[5][0] = InternalCellType.BLOCKED_PRE_EXISTING.value
-    self.grid[0][12] = InternalCellType.BLOCKED_PRE_EXISTING.value
+    self.grid[1][12] = InternalCellType.BLOCKED_PRE_EXISTING.value
     self.grid[2][12] = InternalCellType.BLOCKED_PRE_EXISTING.value
     self.grid[3][12] = InternalCellType.BLOCKED_PRE_EXISTING.value
     self.grid[4][12] = InternalCellType.BLOCKED_PRE_EXISTING.value
     self.grid[5][12] = InternalCellType.BLOCKED_PRE_EXISTING.value
 
-    self.grid[1][7] = InternalCellType.BLOCKED_PRE_EXISTING.value
+    self.grid[1][2] = InternalCellType.BLOCKED_PRE_EXISTING.value
+    self.grid[2][5] = InternalCellType.BLOCKED_PRE_EXISTING.value
+    self.grid[1][6] = InternalCellType.BLOCKED_PRE_EXISTING.value
+    self.grid[0][6] = InternalCellType.BLOCKED_PRE_EXISTING.value
+    self.grid[1][9] = InternalCellType.BLOCKED_PRE_EXISTING.value
     self.grid[2][9] = InternalCellType.BLOCKED_PRE_EXISTING.value
-    self.grid[5][8] = InternalCellType.BLOCKED_PRE_EXISTING.value
 
     # Place the start in top left
     self.grid[self.startPos[0]][self.startPos[1]] = InternalCellType.START.value
 
     # Place the end in bottom right
     self.grid[self.goalPos[0]][self.goalPos[1]] = InternalCellType.GOAL.value
+
+    # Place checkpoints
+    self.checkpoints = []
+    checkpointVal = len(InternalCellType)
+    self.checkpoints.append((5,6,checkpointVal))
+
+    for checkpoint in self.checkpoints:
+      self.grid[checkpoint[0]][checkpoint[1]] = checkpoint[2]
 
     self.lastPathLength = self.calculateShortestPath()
 
@@ -113,23 +128,23 @@ class PatheryEnv(gym.Env):
 
     return observation, info
 
-  def calculateShortestPath(self):
+  def calculateShortestSubpath(self, subStartPos, subGoalPos):
     # Directions for moving: right, left, down, up
     directions = [(0, 1), (0, -1), (1, 0), (-1, 0)]
     
     # Create a queue for BFS and add the starting point
-    queue = deque([(self.startPos, 0)])
+    queue = deque([(subStartPos, 0)])
     
     # Set of visited nodes
     visited = set()
-    visited.add(self.startPos)
+    visited.add(subStartPos)
     
     while queue:
       # Get the current position and the path length to it
       (current, pathLength) = queue.popleft()
       
       # If the current position is the goal, return the path
-      if current == self.goalPos:
+      if current[0] == subGoalPos[0] and current[1] == subGoalPos[1]:
         return pathLength
       
       # Explore all the possible directions
@@ -140,7 +155,9 @@ class PatheryEnv(gym.Env):
         # Check if the next position is within the grid bounds
         if (0 <= next_position[0] < self.gridSize[0]) and (0 <= next_position[1] < self.gridSize[1]):
           # Check if the next position is not an obstacle and not visited
-          if self.grid[next_position[0]][next_position[1]] in [InternalCellType.OPEN.value, InternalCellType.START.value, InternalCellType.GOAL.value] and next_position not in visited:
+          # print(f'Next position: {next_position}')
+          if self.grid[next_position[0]][next_position[1]] not in [InternalCellType.BLOCKED_PRE_EXISTING.value, InternalCellType.BLOCKED_PLAYER_PLACED.value] and next_position not in visited:
+            # print('  adding')
             # Add the next position to the queue and mark it as visited
             queue.append((next_position, pathLength+1))
             visited.add(next_position)
@@ -148,6 +165,26 @@ class PatheryEnv(gym.Env):
     # There is no path to the goal
     return 0
 
+  def calculateShortestPath(self):
+    if len(self.checkpoints) == 0:
+      return self.calculateShortestSubpath(self.startPos, self.goalPos)
+
+    sum = self.calculateShortestSubpath(self.startPos, self.checkpoints[0])
+    if sum == 0:
+      # If any path is blocked, the entire path length is 0
+      return 0
+    for i in range(1, len(self.checkpoints)):
+      calculatedPathLength = self.calculateShortestSubpath(self.checkpoints[i-1], self.checkpoints[i])
+      if calculatedPathLength == 0:
+        # If any path is blocked, the entire path length is 0
+        return 0
+      sum += calculatedPathLength
+    calculatedPathLength = self.calculateShortestSubpath(self.checkpoints[-1], self.goalPos)
+    if calculatedPathLength == 0:
+      # If any path is blocked, the entire path length is 0
+      return 0
+    sum += calculatedPathLength
+    return sum
 
   def step(self, action):
     if self.grid[action[0]][action[1]] == InternalCellType.OPEN.value:
@@ -165,6 +202,9 @@ class PatheryEnv(gym.Env):
 
     terminated = self.remainingBlocks == 0
     reward = pathLength - self.lastPathLength
+    if reward < 0:
+      print(f'last path len: {self.lastPathLength}, this path length: {pathLength} obs:\n{self._get_obs()}')
+      raise ValueError(f'Reward is negative: {reward}')
     self.lastPathLength = pathLength
 
     observation = self._get_obs()
@@ -184,10 +224,15 @@ class PatheryEnv(gym.Env):
       InternalCellType.START: 'S',                 # Start
       InternalCellType.GOAL: 'G'                   # Goal
     }
+    def getChar(val):
+      if val >= len(InternalCellType):
+        return chr(ord('A') + val - len(InternalCellType))
+      return ansi_map[InternalCellType(val)]
+
     top_border = "+" + "-" * (self.gridSize[1] * 2 - 1) + "+"
     output = top_border + '\n'
     for row in self.grid:
-      output += '|' + '|'.join(ansi_map[InternalCellType(val)] for val in row) + '|\n'
+      output += '|' + '|'.join(getChar(val) for val in row) + '|\n'
     output += top_border + '\n'
     output += f'Remaining blocks: {self.remainingBlocks}'
     return output

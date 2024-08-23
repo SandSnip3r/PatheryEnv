@@ -4,8 +4,10 @@ from enum import Enum
 import numpy as np
 env = gym.make('pathery_env/Pathery-v0', render_mode='ansi')
 
-env.reset()
+obs, info = env.reset()
 done = False
+
+print(f'Start; {info}')
 
 def readPair():
   user_input = input("Enter two integers separated by space: ")
