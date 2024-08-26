@@ -32,11 +32,11 @@ class PatheryEnv(gym.Env):
 
   def __init__(self, render_mode=None):
     # Initialize grid size
-    self.gridSize = (6, 13)
+    self.gridSize = (9, 17)
 
     self.zeroGrid()
 
-    self.maxCheckpointCount = 1
+    self.maxCheckpointCount = 2
 
     # Observation space: Each cell type is a discrete value
     self.observation_space = spaces.MultiDiscrete(np.full((self.gridSize[0], self.gridSize[1]), len(CellType) + self.maxCheckpointCount))
@@ -76,7 +76,7 @@ class PatheryEnv(gym.Env):
     self.zeroGrid()
 
     # Set the number of blocks that the user can place
-    self.remainingBlocks = 8
+    self.remainingBlocks = 10
 
     # Randomize start/goal
     # self.startPos = self.randomPos()
@@ -85,38 +85,50 @@ class PatheryEnv(gym.Env):
     #   self.goalPos = self.randomPos()
 
     # Fixed start/goal
-    self.startPos = (2,0)
-    self.goalPos = (0,12)
+    self.startPos = (0,0)
+    self.goalPos = (0,16)
 
     # Fixed pre-placed blocks
-    self.grid[0][0] = InternalCellType.BLOCKED_PRE_EXISTING.value
     self.grid[1][0] = InternalCellType.BLOCKED_PRE_EXISTING.value
+    self.grid[2][0] = InternalCellType.BLOCKED_PRE_EXISTING.value
     self.grid[3][0] = InternalCellType.BLOCKED_PRE_EXISTING.value
     self.grid[4][0] = InternalCellType.BLOCKED_PRE_EXISTING.value
     self.grid[5][0] = InternalCellType.BLOCKED_PRE_EXISTING.value
-    self.grid[1][12] = InternalCellType.BLOCKED_PRE_EXISTING.value
-    self.grid[2][12] = InternalCellType.BLOCKED_PRE_EXISTING.value
-    self.grid[3][12] = InternalCellType.BLOCKED_PRE_EXISTING.value
-    self.grid[4][12] = InternalCellType.BLOCKED_PRE_EXISTING.value
-    self.grid[5][12] = InternalCellType.BLOCKED_PRE_EXISTING.value
+    self.grid[6][0] = InternalCellType.BLOCKED_PRE_EXISTING.value
+    self.grid[7][0] = InternalCellType.BLOCKED_PRE_EXISTING.value
+    self.grid[8][0] = InternalCellType.BLOCKED_PRE_EXISTING.value
 
-    self.grid[1][2] = InternalCellType.BLOCKED_PRE_EXISTING.value
-    self.grid[2][5] = InternalCellType.BLOCKED_PRE_EXISTING.value
-    self.grid[1][6] = InternalCellType.BLOCKED_PRE_EXISTING.value
-    self.grid[0][6] = InternalCellType.BLOCKED_PRE_EXISTING.value
+    self.grid[2][1] = InternalCellType.BLOCKED_PRE_EXISTING.value
+    self.grid[0][4] = InternalCellType.BLOCKED_PRE_EXISTING.value
+    self.grid[3][5] = InternalCellType.BLOCKED_PRE_EXISTING.value
+    self.grid[8][3] = InternalCellType.BLOCKED_PRE_EXISTING.value
+    self.grid[0][7] = InternalCellType.BLOCKED_PRE_EXISTING.value
+    self.grid[2][8] = InternalCellType.BLOCKED_PRE_EXISTING.value
     self.grid[1][9] = InternalCellType.BLOCKED_PRE_EXISTING.value
-    self.grid[2][9] = InternalCellType.BLOCKED_PRE_EXISTING.value
+    self.grid[2][11] = InternalCellType.BLOCKED_PRE_EXISTING.value
+    self.grid[3][13] = InternalCellType.BLOCKED_PRE_EXISTING.value
+    self.grid[1][14] = InternalCellType.BLOCKED_PRE_EXISTING.value
 
     # Place the start in top left
     self.grid[self.startPos[0]][self.startPos[1]] = InternalCellType.START.value
 
     # Place the end in bottom right
     self.grid[self.goalPos[0]][self.goalPos[1]] = InternalCellType.GOAL.value
+    self.grid[self.goalPos[0]+1][self.goalPos[1]] = InternalCellType.GOAL.value
+    self.grid[self.goalPos[0]+2][self.goalPos[1]] = InternalCellType.GOAL.value
+    self.grid[self.goalPos[0]+3][self.goalPos[1]] = InternalCellType.GOAL.value
+    self.grid[self.goalPos[0]+4][self.goalPos[1]] = InternalCellType.GOAL.value
+    self.grid[self.goalPos[0]+5][self.goalPos[1]] = InternalCellType.GOAL.value
+    self.grid[self.goalPos[0]+6][self.goalPos[1]] = InternalCellType.GOAL.value
+    self.grid[self.goalPos[0]+7][self.goalPos[1]] = InternalCellType.GOAL.value
+    self.grid[self.goalPos[0]+8][self.goalPos[1]] = InternalCellType.GOAL.value
 
     # Place checkpoints
     self.checkpoints = []
     checkpointVal = len(InternalCellType)
-    self.checkpoints.append((5,6,checkpointVal))
+    self.checkpoints.append((2,12,checkpointVal))
+    checkpointVal += 1
+    self.checkpoints.append((5,11,checkpointVal))
 
     for checkpoint in self.checkpoints:
       self.grid[checkpoint[0]][checkpoint[1]] = checkpoint[2]
@@ -129,6 +141,7 @@ class PatheryEnv(gym.Env):
     return observation, info
 
   def calculateShortestSubpath(self, subStartPos, subGoalPos):
+    goalType = self.grid[subGoalPos[0]][subGoalPos[1]]
     # Directions for moving: right, left, down, up
     directions = [(0, 1), (0, -1), (1, 0), (-1, 0)]
     
@@ -144,7 +157,7 @@ class PatheryEnv(gym.Env):
       (current, pathLength) = queue.popleft()
       
       # If the current position is the goal, return the path
-      if current[0] == subGoalPos[0] and current[1] == subGoalPos[1]:
+      if self.grid[current[0]][current[1]] == goalType:
         return pathLength
       
       # Explore all the possible directions
