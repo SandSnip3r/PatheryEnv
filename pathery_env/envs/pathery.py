@@ -89,7 +89,7 @@ class PatheryEnv(gym.Env):
     self.startPos = (1,0)
     self.goalPos = (0,16)
     if self.random_checkpoints:
-      self.generateCheckpoints(checkpointCount=2)
+      self.generateCheckpoints(checkpointCount=self.maxCheckpointCount)
     else:
       # Place checkpoints
       self.checkpoints = []
@@ -149,7 +149,7 @@ class PatheryEnv(gym.Env):
   def generateCheckpoints(self,checkpointCount):
     self.checkpoints = []
     checkpointVal = len(InternalCellType)
-    while checkpointCount>=0:
+    while checkpointCount>0:
       randomX, randomY = self.randomPos()
       # Check if the cell is a wall or a goal
       if self.grid[randomX][randomY] >= len(InternalCellType):
