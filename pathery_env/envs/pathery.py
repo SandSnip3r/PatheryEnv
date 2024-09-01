@@ -76,7 +76,7 @@ class PatheryEnv(gym.Env):
     self.zeroGrid()
 
     # Set the number of blocks that the user can place
-    self.remainingBlocks = 10
+    self.remainingBlocks = 14
 
     # Randomize start/goal
     # self.startPos = self.randomPos()
@@ -98,16 +98,20 @@ class PatheryEnv(gym.Env):
     self.grid[7][0] = InternalCellType.BLOCKED_PRE_EXISTING.value
     self.grid[8][0] = InternalCellType.BLOCKED_PRE_EXISTING.value
 
-    self.grid[8][1] = InternalCellType.BLOCKED_PRE_EXISTING.value
-    self.grid[2][5] = InternalCellType.BLOCKED_PRE_EXISTING.value
+    self.grid[2][1] = InternalCellType.BLOCKED_PRE_EXISTING.value
+    self.grid[6][1] = InternalCellType.BLOCKED_PRE_EXISTING.value
+    self.grid[3][3] = InternalCellType.BLOCKED_PRE_EXISTING.value
+    self.grid[3][4] = InternalCellType.BLOCKED_PRE_EXISTING.value
+    self.grid[1][5] = InternalCellType.BLOCKED_PRE_EXISTING.value
+    self.grid[3][6] = InternalCellType.BLOCKED_PRE_EXISTING.value
+    self.grid[8][6] = InternalCellType.BLOCKED_PRE_EXISTING.value
     self.grid[1][7] = InternalCellType.BLOCKED_PRE_EXISTING.value
-    self.grid[8][8] = InternalCellType.BLOCKED_PRE_EXISTING.value
-    self.grid[6][10] = InternalCellType.BLOCKED_PRE_EXISTING.value
+    self.grid[3][9] = InternalCellType.BLOCKED_PRE_EXISTING.value
+    self.grid[8][9] = InternalCellType.BLOCKED_PRE_EXISTING.value
+    self.grid[1][11] = InternalCellType.BLOCKED_PRE_EXISTING.value
+    self.grid[3][11] = InternalCellType.BLOCKED_PRE_EXISTING.value
     self.grid[4][11] = InternalCellType.BLOCKED_PRE_EXISTING.value
-    self.grid[7][12] = InternalCellType.BLOCKED_PRE_EXISTING.value
-    self.grid[0][13] = InternalCellType.BLOCKED_PRE_EXISTING.value
-    self.grid[6][13] = InternalCellType.BLOCKED_PRE_EXISTING.value
-    self.grid[5][15] = InternalCellType.BLOCKED_PRE_EXISTING.value
+    self.grid[6][12] = InternalCellType.BLOCKED_PRE_EXISTING.value
 
     # Place the start
     self.grid[self.startPos[0]][self.startPos[1]] = InternalCellType.START.value
@@ -126,9 +130,9 @@ class PatheryEnv(gym.Env):
     # Place checkpoints
     self.checkpoints = []
     checkpointVal = len(InternalCellType)
-    self.checkpoints.append((7,14,checkpointVal))
+    self.checkpoints.append((5,13,checkpointVal))
     checkpointVal += 1
-    self.checkpoints.append((0,6,checkpointVal))
+    self.checkpoints.append((1,10,checkpointVal))
 
     for checkpoint in self.checkpoints:
       self.grid[checkpoint[0]][checkpoint[1]] = checkpoint[2]
