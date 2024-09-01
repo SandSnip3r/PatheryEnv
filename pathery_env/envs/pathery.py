@@ -30,11 +30,11 @@ class PatheryEnv(gym.Env):
     y = self.np_random.integers(low=0, high=self.gridSize[1], dtype=np.int32)
     return (x,y)
 
-  def __init__(self, render_mode=None):
+  def __init__(self, render_mode=None,random_blocks=False,random_checkpoints=False):
     # Initialize grid size
     self.gridSize = (9, 17)
-    self.random_blocks=True
-    self.random_checkpoints = True
+    self.random_blocks=random_blocks
+    self.random_checkpoints = random_checkpoints
     self.zeroGrid()
 
     self.maxCheckpointCount = 2
