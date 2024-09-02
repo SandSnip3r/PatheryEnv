@@ -4,7 +4,7 @@ from enum import Enum
 import numpy as np
 
 # env = gym.make('pathery_env/Pathery-v0', render_mode='ansi')
-env = gym.make('pathery_env/Pathery-v0', render_mode='ansi', random_rocks=True, random_checkpoints=True)
+env = gym.make('pathery_env/Pathery-v0', render_mode='ansi', random_start=True, random_rocks=True, random_checkpoints=True)
 
 obs, info = env.reset()
 done = False

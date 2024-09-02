@@ -30,10 +30,11 @@ class PatheryEnv(gym.Env):
     col = self.np_random.integers(low=0, high=self.gridSize[1], dtype=np.int32)
     return (row, col)
 
-  def __init__(self, render_mode=None, random_rocks=False, random_checkpoints=False):
+  def __init__(self, render_mode=None, random_start=False, random_rocks=False, random_checkpoints=False):
     # Initialize grid size
     self.gridSize = (9, 17)
     self.wallsToPlace = 14
+    self.random_start = random_start
     self.random_rocks = random_rocks
     self.random_checkpoints = random_checkpoints
     self.resetGrid()
@@ -95,7 +96,11 @@ class PatheryEnv(gym.Env):
     #   self.goalPos = self.randomPos()
 
     # Fixed start/goal
-    self.startPos = (1,0)
+    if self.random_start:
+      self.startPos = (self.np_random.integers(low=0, high=self.gridSize[0], dtype=np.int32),0)
+    else:
+      self.startPos = (1,0)
+
     self.goalPos = (0,16)
 
     # Place the start
@@ -113,14 +118,9 @@ class PatheryEnv(gym.Env):
     self.grid[self.goalPos[0]+8][self.goalPos[1]] = InternalCellType.GOAL.value
 
     # Fixed pre-placed rocks (near start)
-    self.grid[0][0] = InternalCellType.ROCK.value
-    self.grid[2][0] = InternalCellType.ROCK.value
-    self.grid[3][0] = InternalCellType.ROCK.value
-    self.grid[4][0] = InternalCellType.ROCK.value
-    self.grid[5][0] = InternalCellType.ROCK.value
-    self.grid[6][0] = InternalCellType.ROCK.value
-    self.grid[7][0] = InternalCellType.ROCK.value
-    self.grid[8][0] = InternalCellType.ROCK.value
+    for row in range(self.gridSize[0]):
+      if row != self.startPos[0]:
+        self.grid[row][0] = InternalCellType.ROCK.value
 
     self.checkpoints = []
     if self.random_checkpoints:
