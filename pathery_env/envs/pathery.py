@@ -179,7 +179,6 @@ class PatheryEnv(gym.Env):
         self.grid[randomRow][randomCol] = InternalCellType.OPEN.value
 
   def calculateShortestSubpath(self, subStartPos, goalType):
-    print(f'Finding shortest path from {subStartPos} to goal {goalType}')
     # Directions for moving: right, left, down, up
     directions = [(0, 1), (0, -1), (1, 0), (-1, 0)]
     
