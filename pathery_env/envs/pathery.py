@@ -21,15 +21,6 @@ class CellType(Enum):
 class PatheryEnv(gym.Env):
   metadata = {"render_modes": ["ansi"], "render_fps": 4}
 
-  def resetGrid(self):
-    # Initialize grid with OPEN cells (which have value 0)
-    self.grid = np.zeros(self.gridSize, dtype=np.int32)
-
-  def randomPos(self):
-    row = self.np_random.integers(low=0, high=self.gridSize[0], dtype=np.int32)
-    col = self.np_random.integers(low=0, high=self.gridSize[1], dtype=np.int32)
-    return (row, col)
-
   def __init__(self, render_mode=None, random_start=False, random_rocks=False, random_checkpoints=False):
     # Initialize grid size
     self.gridSize = (9, 17)
@@ -50,41 +41,13 @@ class PatheryEnv(gym.Env):
     assert render_mode is None or render_mode in self.metadata["render_modes"]
     self.render_mode = render_mode
 
-  def _get_obs(self):
-    mapping = {
-      InternalCellType.OPEN.value: CellType.OPEN.value,
-      InternalCellType.ROCK.value: CellType.BLOCKED.value,
-      InternalCellType.WALL.value: CellType.BLOCKED.value,
-      InternalCellType.START.value: CellType.START.value,
-      InternalCellType.GOAL.value: CellType.GOAL.value
-    }
-
-    def transform(cell):
-      if cell >= len(InternalCellType):
-        return cell - (len(InternalCellType) - len(CellType))
-      return mapping[cell]
-
-    vectorized_transform = np.vectorize(transform)
-    return vectorized_transform(self.grid)
-
-  def _get_info(self):
-    return {
-      'Path length': self.lastPathLength
-    }
-
-  def addCheckpoint(self, row, col, checkpointIndex):
-    """Adds a checkpoint. Returns the next checkpoint index."""
-    if checkpointIndex - len(InternalCellType) >= self.maxCheckpointCount:
-      raise ValueError(f'Too many checkpoints. Max: {self.maxCheckpointCount}; trying to add #{checkpointIndex - len(InternalCellType)+1}')
-    self.checkpoints.append((row, col, checkpointIndex))
-    self.grid[row][col] = checkpointIndex
-    return checkpointIndex + 1
-
   def reset(self, seed=None, options=None):
     # We need the following line to seed self.np_random
     super().reset(seed=seed)
 
+    # Reset data
     self.resetGrid()
+    self.rewardSoFar = 0
 
     # Set the number of walls that the user can place
     self.remainingWalls = self.wallsToPlace
@@ -143,6 +106,76 @@ class PatheryEnv(gym.Env):
     info = self._get_info()
 
     return observation, info
+
+  def step(self, action):
+    if self.grid[action[0]][action[1]] == InternalCellType.OPEN.value:
+      self.grid[action[0]][action[1]] = InternalCellType.WALL.value
+      self.remainingWalls -= 1
+    else:
+      # Invalid position; reward is -1, episode terminates
+      return self._get_obs(), -1, True, False, self._get_info()
+
+    pathLength = self.calculateShortestPath()
+
+    if pathLength == 0:
+      # Blocks path; reward is -1 for entire episode, episode terminates
+      return self._get_obs(), -self.rewardSoFar-1, True, False, self._get_info()
+
+    terminated = self.remainingWalls == 0
+    reward = pathLength - self.lastPathLength
+    self.rewardSoFar += reward
+    if reward < 0:
+      print(f'last path len: {self.lastPathLength}, this path length: {pathLength} obs:\n{self._get_obs()}')
+      raise ValueError(f'Reward is negative: {reward}')
+    self.lastPathLength = pathLength
+
+    observation = self._get_obs()
+    info = self._get_info()
+
+    return observation, reward, terminated, False, info
+
+  def render(self):
+    if self.render_mode == "ansi":
+      return self._render_ansi()
+
+  def _get_obs(self):
+    mapping = {
+      InternalCellType.OPEN.value: CellType.OPEN.value,
+      InternalCellType.ROCK.value: CellType.BLOCKED.value,
+      InternalCellType.WALL.value: CellType.BLOCKED.value,
+      InternalCellType.START.value: CellType.START.value,
+      InternalCellType.GOAL.value: CellType.GOAL.value
+    }
+
+    def transform(cell):
+      if cell >= len(InternalCellType):
+        return cell - (len(InternalCellType) - len(CellType))
+      return mapping[cell]
+
+    vectorized_transform = np.vectorize(transform)
+    return vectorized_transform(self.grid)
+
+  def _get_info(self):
+    return {
+      'Path length': self.lastPathLength
+    }
+
+  def resetGrid(self):
+    # Initialize grid with OPEN cells (which have value 0)
+    self.grid = np.zeros(self.gridSize, dtype=np.int32)
+
+  def randomPos(self):
+    row = self.np_random.integers(low=0, high=self.gridSize[0], dtype=np.int32)
+    col = self.np_random.integers(low=0, high=self.gridSize[1], dtype=np.int32)
+    return (row, col)
+
+  def addCheckpoint(self, row, col, checkpointIndex):
+    """Adds a checkpoint. Returns the next checkpoint index."""
+    if checkpointIndex - len(InternalCellType) >= self.maxCheckpointCount:
+      raise ValueError(f'Too many checkpoints. Max: {self.maxCheckpointCount}; trying to add #{checkpointIndex - len(InternalCellType)+1}')
+    self.checkpoints.append((row, col, checkpointIndex))
+    self.grid[row][col] = checkpointIndex
+    return checkpointIndex + 1
 
   def generateCheckpoints(self,checkpointCount):
     checkpointVal = len(InternalCellType)
@@ -235,36 +268,6 @@ class PatheryEnv(gym.Env):
       return 0
     sum += calculatedPathLength
     return sum
-
-  def step(self, action):
-    if self.grid[action[0]][action[1]] == InternalCellType.OPEN.value:
-      self.grid[action[0]][action[1]] = InternalCellType.WALL.value
-      self.remainingWalls -= 1
-    else:
-      # Invalid position; reward is -1, episode terminates
-      return self._get_obs(), -1, True, False, self._get_info()
-    
-    pathLength = self.calculateShortestPath()
-
-    if pathLength == 0:
-      # Blocks path; reward is -1, episode terminates
-      return self._get_obs(), -1, True, False, self._get_info()
-
-    terminated = self.remainingWalls == 0
-    reward = pathLength - self.lastPathLength
-    if reward < 0:
-      print(f'last path len: {self.lastPathLength}, this path length: {pathLength} obs:\n{self._get_obs()}')
-      raise ValueError(f'Reward is negative: {reward}')
-    self.lastPathLength = pathLength
-
-    observation = self._get_obs()
-    info = self._get_info()
-
-    return observation, reward, terminated, False, info
-
-  def render(self):
-    if self.render_mode == "ansi":
-      return self._render_ansi()
 
   def _render_ansi(self):
     ansi_map = {
