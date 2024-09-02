@@ -89,33 +89,22 @@ class PatheryEnv(gym.Env):
     # Set the number of walls that the user can place
     self.remainingWalls = self.wallsToPlace
 
-    # Randomize start/goal
-    # self.startPos = self.randomPos()
-    # self.goalPos = self.startPos
-    # while self.goalPos == self.startPos:
-    #   self.goalPos = self.randomPos()
-
-    # Fixed start/goal
     if self.random_start:
+      # Choose a random start
       self.startPos = (self.np_random.integers(low=0, high=self.gridSize[0], dtype=np.int32),0)
     else:
+      # Choose a fixed start
       self.startPos = (1,0)
 
-    self.goalPos = (0,16)
+    # Place all goals on the far right
+    self.goalPositions = [(row, 16) for row in range(self.gridSize[0])]
 
     # Place the start
     self.grid[self.startPos[0]][self.startPos[1]] = InternalCellType.START.value
 
     # Place the goals
-    self.grid[self.goalPos[0]][self.goalPos[1]] = InternalCellType.GOAL.value
-    self.grid[self.goalPos[0]+1][self.goalPos[1]] = InternalCellType.GOAL.value
-    self.grid[self.goalPos[0]+2][self.goalPos[1]] = InternalCellType.GOAL.value
-    self.grid[self.goalPos[0]+3][self.goalPos[1]] = InternalCellType.GOAL.value
-    self.grid[self.goalPos[0]+4][self.goalPos[1]] = InternalCellType.GOAL.value
-    self.grid[self.goalPos[0]+5][self.goalPos[1]] = InternalCellType.GOAL.value
-    self.grid[self.goalPos[0]+6][self.goalPos[1]] = InternalCellType.GOAL.value
-    self.grid[self.goalPos[0]+7][self.goalPos[1]] = InternalCellType.GOAL.value
-    self.grid[self.goalPos[0]+8][self.goalPos[1]] = InternalCellType.GOAL.value
+    for goalPos in self.goalPositions:
+      self.grid[goalPos[0]][goalPos[1]] = InternalCellType.GOAL.value
 
     # Fixed pre-placed rocks (near start)
     for row in range(self.gridSize[0]):
@@ -189,8 +178,8 @@ class PatheryEnv(gym.Env):
         # Failed to place here, reset the cell
         self.grid[randomRow][randomCol] = InternalCellType.OPEN.value
 
-  def calculateShortestSubpath(self, subStartPos, subGoalPos):
-    goalType = self.grid[subGoalPos[0]][subGoalPos[1]]
+  def calculateShortestSubpath(self, subStartPos, goalType):
+    print(f'Finding shortest path from {subStartPos} to goal {goalType}')
     # Directions for moving: right, left, down, up
     directions = [(0, 1), (0, -1), (1, 0), (-1, 0)]
     
@@ -229,19 +218,19 @@ class PatheryEnv(gym.Env):
 
   def calculateShortestPath(self):
     if len(self.checkpoints) == 0:
-      return self.calculateShortestSubpath(self.startPos, self.goalPos)
+      return self.calculateShortestSubpath(self.startPos, InternalCellType.GOAL.value)
 
-    sum = self.calculateShortestSubpath(self.startPos, self.checkpoints[0])
+    sum = self.calculateShortestSubpath(self.startPos, self.checkpoints[0][2])
     if sum == 0:
       # If any path is blocked, the entire path length is 0
       return 0
     for i in range(1, len(self.checkpoints)):
-      calculatedPathLength = self.calculateShortestSubpath(self.checkpoints[i-1], self.checkpoints[i])
+      calculatedPathLength = self.calculateShortestSubpath(self.checkpoints[i-1], self.checkpoints[i][2])
       if calculatedPathLength == 0:
         # If any path is blocked, the entire path length is 0
         return 0
       sum += calculatedPathLength
-    calculatedPathLength = self.calculateShortestSubpath(self.checkpoints[-1], self.goalPos)
+    calculatedPathLength = self.calculateShortestSubpath(self.checkpoints[-1], InternalCellType.GOAL.value)
     if calculatedPathLength == 0:
       # If any path is blocked, the entire path length is 0
       return 0
