@@ -18,25 +18,107 @@ class CellType(Enum):
   START = 2
   GOAL = 3
 
+def createHardCoded(render_mode):
+  return PatheryEnv.hardCoded(render_mode)
+
+def createRandomNormal(render_mode):
+  return PatheryEnv.randomNormal(render_mode)
+
+def fromMapString(render_mode, map_string):
+  return PatheryEnv.fromMapString(render_mode, map_string)
+
 class PatheryEnv(gym.Env):
   metadata = {"render_modes": ["ansi"], "render_fps": 4}
 
-  def resetGrid(self):
-    # Initialize grid with OPEN cells (which have value 0)
-    self.grid = np.zeros(self.gridSize, dtype=np.int32)
+  @classmethod
+  def hardCoded(cls, render_mode):
+    return cls(render_mode=render_mode, random_map=False)
 
-  def randomPos(self):
-    row = self.np_random.integers(low=0, high=self.gridSize[0], dtype=np.int32)
-    col = self.np_random.integers(low=0, high=self.gridSize[1], dtype=np.int32)
-    return (row, col)
+  @classmethod
+  def randomNormal(cls, render_mode):
+    return cls(render_mode=render_mode, random_map=True)
 
-  def __init__(self, render_mode=None, random_start=False, random_rocks=False, random_checkpoints=False):
-    # Initialize grid size
-    self.gridSize = (9, 17)
-    self.wallsToPlace = 14
-    self.random_start = random_start
-    self.random_rocks = random_rocks
-    self.random_checkpoints = random_checkpoints
+  @classmethod
+  def fromMapString(cls, render_mode, map_string):
+    return cls(render_mode=render_mode, random_map=False, map_string=map_string)
+
+  def linearTo2d(self, pos):
+    return pos//self.gridSize[1], pos%self.gridSize[1]
+
+  def initializeFromMapString(self, map_string):
+    # Map string format
+    # <width;int>.<height;int>.<num walls;int>.<name;string>...<unk>:([<number of open cells>],<cell type>.)*
+    # Cell types:
+    #   r1: Map-pre-placed rock
+    #   r2: Player-placed wall
+    #   r3: Map boundary rock
+    #   s1: Start (1st path)
+    #   s2: Start (2nd path)
+    #   f1: Finish/goal
+    metadata, map = map_string.split(':')
+    width, height, numWalls, *_ = metadata.split('.')
+    # Get size and wall count from map string
+    self.gridSize = (int(height), int(width))
+    self.wallsToPlace = int(numWalls)
+    # Save rocks, start(s), goal(s), and checkpoint(s) from map string
+    mapCells = map.split('.')
+    print(f'Map cells: {mapCells}')
+    currentIndex = -1
+    for cell in mapCells:
+      if cell:
+        freeCellCount, cellType = cell.split(',')
+        if freeCellCount:
+          currentIndex += int(freeCellCount)+1
+        else:
+          currentIndex += 1
+        row, col = self.linearTo2d(currentIndex)
+        if cellType == 'r1' or cellType == 'r3':
+          self.rocks.append((row,col))
+        elif cellType == 'f1':
+          self.goalPositions.append((row,col))
+        elif cellType == 's1':
+          self.startPositions.append((row,col))
+        # print(f'Cell #{currentIndex} ({row},{col}) is a {cellType}')
+
+  def initializeHardCodedMap(self):
+    # Add rocks
+    self.rocks.append((2,1))
+    self.rocks.append((6,1))
+    self.rocks.append((3,3))
+    self.rocks.append((3,4))
+    self.rocks.append((1,5))
+    self.rocks.append((3,6))
+    self.rocks.append((8,6))
+    self.rocks.append((1,7))
+    self.rocks.append((3,9))
+    self.rocks.append((8,9))
+    self.rocks.append((1,11))
+    self.rocks.append((3,11))
+    self.rocks.append((4,11))
+    self.rocks.append((6,12))
+
+    # Place all goals on the far right
+    self.goalPositions = [(row, self.gridSize[1]-1) for row in range(self.gridSize[0])]
+
+  def __init__(self, render_mode, random_map=False, map_string=None):
+    print(f'Given map string "{map_string}"')
+    self.random_map = random_map
+
+    self.startPositions = []
+    self.goalPositions = []
+    self.rocks = []
+
+    if map_string is not None:
+      self.initializeFromMapString(map_string)
+    else:
+      # Size and wall count are hard coded, even for random maps
+      self.gridSize = (9, 17)
+      self.wallsToPlace = 14
+      if self.random_map:
+        pass
+      else:
+        self.initializeHardCodedMap()
+
     self.resetGrid()
 
     self.maxCheckpointCount = 2
@@ -49,6 +131,110 @@ class PatheryEnv(gym.Env):
 
     assert render_mode is None or render_mode in self.metadata["render_modes"]
     self.render_mode = render_mode
+
+  def reset(self, seed=None, options=None):
+    # We need the following line to seed self.np_random
+    super().reset(seed=seed)
+
+    self.resetGrid()
+
+    # Set the number of walls that the user can place
+    self.remainingWalls = self.wallsToPlace
+
+    if self.random_map:
+      # Choose a random start
+      self.startPos = (self.np_random.integers(low=0, high=self.gridSize[0], dtype=np.int32),0)
+    else:
+      # Choose a fixed start
+      self.startPos = (1,0)
+
+    # Place the start
+    self.grid[self.startPos[0]][self.startPos[1]] = InternalCellType.START.value
+
+    # Place the goals
+    for goalPos in self.goalPositions:
+      self.grid[goalPos[0]][goalPos[1]] = InternalCellType.GOAL.value
+
+    # Fixed pre-placed rocks (near start)
+    for row in range(self.gridSize[0]):
+      if row != self.startPos[0]:
+        self.grid[row][0] = InternalCellType.ROCK.value
+
+    self.checkpoints = []
+    if self.random_map:
+      self.generateCheckpoints(checkpointCount=self.maxCheckpointCount)
+    else:
+      # Place checkpoints
+      # next_index = self.addCheckpoint(5, 13, len(InternalCellType))
+      # next_index = self.addCheckpoint(1, 10, next_index)
+      pass
+
+    if self.random_map:
+      self.placeRandomRocks(rocksToPlace=14)
+    else:
+      for rockPos in self.rocks:
+        self.grid[rockPos[0]][rockPos[1]] = InternalCellType.ROCK.value
+      # self.grid[2][1] = InternalCellType.ROCK.value
+      # self.grid[6][1] = InternalCellType.ROCK.value
+      # self.grid[3][3] = InternalCellType.ROCK.value
+      # self.grid[3][4] = InternalCellType.ROCK.value
+      # self.grid[1][5] = InternalCellType.ROCK.value
+      # self.grid[3][6] = InternalCellType.ROCK.value
+      # self.grid[8][6] = InternalCellType.ROCK.value
+      # self.grid[1][7] = InternalCellType.ROCK.value
+      # self.grid[3][9] = InternalCellType.ROCK.value
+      # self.grid[8][9] = InternalCellType.ROCK.value
+      # self.grid[1][11] = InternalCellType.ROCK.value
+      # self.grid[3][11] = InternalCellType.ROCK.value
+      # self.grid[4][11] = InternalCellType.ROCK.value
+      # self.grid[6][12] = InternalCellType.ROCK.value
+      pass
+
+    self.lastPathLength = self.calculateShortestPath()
+
+    observation = self._get_obs()
+    info = self._get_info()
+
+    return observation, info
+
+  def step(self, action):
+    if self.grid[action[0]][action[1]] == InternalCellType.OPEN.value:
+      self.grid[action[0]][action[1]] = InternalCellType.WALL.value
+      self.remainingWalls -= 1
+    else:
+      # Invalid position; reward is -1, episode terminates
+      return self._get_obs(), -1, True, False, self._get_info()
+
+    pathLength = self.calculateShortestPath()
+
+    if pathLength == 0:
+      # Blocks path; reward is -1, episode terminates
+      return self._get_obs(), -1, True, False, self._get_info()
+
+    terminated = self.remainingWalls == 0
+    reward = pathLength - self.lastPathLength
+    if reward < 0:
+      print(f'last path len: {self.lastPathLength}, this path length: {pathLength} obs:\n{self._get_obs()}')
+      raise ValueError(f'Reward is negative: {reward}')
+    self.lastPathLength = pathLength
+
+    observation = self._get_obs()
+    info = self._get_info()
+
+    return observation, reward, terminated, False, info
+
+  def render(self):
+    if self.render_mode == "ansi":
+      return self._render_ansi()
+
+  def resetGrid(self):
+    # Initialize grid with OPEN cells (which have value 0)
+    self.grid = np.zeros(self.gridSize, dtype=np.int32)
+
+  def randomPos(self):
+    row = self.np_random.integers(low=0, high=self.gridSize[0], dtype=np.int32)
+    col = self.np_random.integers(low=0, high=self.gridSize[1], dtype=np.int32)
+    return (row, col)
 
   def _get_obs(self):
     mapping = {
@@ -79,70 +265,6 @@ class PatheryEnv(gym.Env):
     self.checkpoints.append((row, col, checkpointIndex))
     self.grid[row][col] = checkpointIndex
     return checkpointIndex + 1
-
-  def reset(self, seed=None, options=None):
-    # We need the following line to seed self.np_random
-    super().reset(seed=seed)
-
-    self.resetGrid()
-
-    # Set the number of walls that the user can place
-    self.remainingWalls = self.wallsToPlace
-
-    if self.random_start:
-      # Choose a random start
-      self.startPos = (self.np_random.integers(low=0, high=self.gridSize[0], dtype=np.int32),0)
-    else:
-      # Choose a fixed start
-      self.startPos = (1,0)
-
-    # Place all goals on the far right
-    self.goalPositions = [(row, 16) for row in range(self.gridSize[0])]
-
-    # Place the start
-    self.grid[self.startPos[0]][self.startPos[1]] = InternalCellType.START.value
-
-    # Place the goals
-    for goalPos in self.goalPositions:
-      self.grid[goalPos[0]][goalPos[1]] = InternalCellType.GOAL.value
-
-    # Fixed pre-placed rocks (near start)
-    for row in range(self.gridSize[0]):
-      if row != self.startPos[0]:
-        self.grid[row][0] = InternalCellType.ROCK.value
-
-    self.checkpoints = []
-    if self.random_checkpoints:
-      self.generateCheckpoints(checkpointCount=self.maxCheckpointCount)
-    else:
-      # Place checkpoints
-      next_index = self.addCheckpoint(5, 13, len(InternalCellType))
-      next_index = self.addCheckpoint(1, 10, next_index)
-
-    if self.random_rocks:
-      self.placeRandomRocks(rocksToPlace=14)
-    else:
-      self.grid[2][1] = InternalCellType.ROCK.value
-      self.grid[6][1] = InternalCellType.ROCK.value
-      self.grid[3][3] = InternalCellType.ROCK.value
-      self.grid[3][4] = InternalCellType.ROCK.value
-      self.grid[1][5] = InternalCellType.ROCK.value
-      self.grid[3][6] = InternalCellType.ROCK.value
-      self.grid[8][6] = InternalCellType.ROCK.value
-      self.grid[1][7] = InternalCellType.ROCK.value
-      self.grid[3][9] = InternalCellType.ROCK.value
-      self.grid[8][9] = InternalCellType.ROCK.value
-      self.grid[1][11] = InternalCellType.ROCK.value
-      self.grid[3][11] = InternalCellType.ROCK.value
-      self.grid[4][11] = InternalCellType.ROCK.value
-      self.grid[6][12] = InternalCellType.ROCK.value
-
-    self.lastPathLength = self.calculateShortestPath()
-
-    observation = self._get_obs()
-    info = self._get_info()
-
-    return observation, info
 
   def generateCheckpoints(self,checkpointCount):
     checkpointVal = len(InternalCellType)
@@ -235,36 +357,6 @@ class PatheryEnv(gym.Env):
       return 0
     sum += calculatedPathLength
     return sum
-
-  def step(self, action):
-    if self.grid[action[0]][action[1]] == InternalCellType.OPEN.value:
-      self.grid[action[0]][action[1]] = InternalCellType.WALL.value
-      self.remainingWalls -= 1
-    else:
-      # Invalid position; reward is -1, episode terminates
-      return self._get_obs(), -1, True, False, self._get_info()
-    
-    pathLength = self.calculateShortestPath()
-
-    if pathLength == 0:
-      # Blocks path; reward is -1, episode terminates
-      return self._get_obs(), -1, True, False, self._get_info()
-
-    terminated = self.remainingWalls == 0
-    reward = pathLength - self.lastPathLength
-    if reward < 0:
-      print(f'last path len: {self.lastPathLength}, this path length: {pathLength} obs:\n{self._get_obs()}')
-      raise ValueError(f'Reward is negative: {reward}')
-    self.lastPathLength = pathLength
-
-    observation = self._get_obs()
-    info = self._get_info()
-
-    return observation, reward, terminated, False, info
-
-  def render(self):
-    if self.render_mode == "ansi":
-      return self._render_ansi()
 
   def _render_ansi(self):
     ansi_map = {
