@@ -18,9 +18,6 @@ class CellType(Enum):
   START = 2
   GOAL = 3
 
-def createHardCoded(render_mode):
-  return PatheryEnv.hardCoded(render_mode)
-
 def createRandomNormal(render_mode):
   return PatheryEnv.randomNormal(render_mode)
 
@@ -31,16 +28,12 @@ class PatheryEnv(gym.Env):
   metadata = {"render_modes": ["ansi"], "render_fps": 4}
 
   @classmethod
-  def hardCoded(cls, render_mode):
-    return cls(render_mode=render_mode, random_map=False)
-
-  @classmethod
   def randomNormal(cls, render_mode):
-    return cls(render_mode=render_mode, random_map=True)
+    return cls(render_mode=render_mode)
 
   @classmethod
   def fromMapString(cls, render_mode, map_string):
-    return cls(render_mode=render_mode, random_map=False, map_string=map_string)
+    return cls(render_mode=render_mode, map_string=map_string)
 
   def linearTo2d(self, pos):
     return pos//self.gridSize[1], pos%self.gridSize[1]
@@ -78,31 +71,11 @@ class PatheryEnv(gym.Env):
           self.goalPositions.append((row,col))
         elif cellType == 's1':
           self.startPositions.append((row,col))
-        # print(f'Cell #{currentIndex} ({row},{col}) is a {cellType}')
+        # TODO: Checkpoints
 
-  def initializeHardCodedMap(self):
-    # Add rocks
-    self.rocks.append((2,1))
-    self.rocks.append((6,1))
-    self.rocks.append((3,3))
-    self.rocks.append((3,4))
-    self.rocks.append((1,5))
-    self.rocks.append((3,6))
-    self.rocks.append((8,6))
-    self.rocks.append((1,7))
-    self.rocks.append((3,9))
-    self.rocks.append((8,9))
-    self.rocks.append((1,11))
-    self.rocks.append((3,11))
-    self.rocks.append((4,11))
-    self.rocks.append((6,12))
-
-    # Place all goals on the far right
-    self.goalPositions = [(row, self.gridSize[1]-1) for row in range(self.gridSize[0])]
-
-  def __init__(self, render_mode, random_map=False, map_string=None):
+  def __init__(self, render_mode, map_string=None):
     print(f'Given map string "{map_string}"')
-    self.random_map = random_map
+    self.random_map = (map_string == None)
 
     self.startPositions = []
     self.goalPositions = []
@@ -111,15 +84,9 @@ class PatheryEnv(gym.Env):
     if map_string is not None:
       self.initializeFromMapString(map_string)
     else:
-      # Size and wall count are hard coded, even for random maps
+      # Size and wall count are hard coded for random maps
       self.gridSize = (9, 17)
       self.wallsToPlace = 14
-      if self.random_map:
-        pass
-      else:
-        self.initializeHardCodedMap()
-
-    self.resetGrid()
 
     self.maxCheckpointCount = 2
 
@@ -144,21 +111,19 @@ class PatheryEnv(gym.Env):
     if self.random_map:
       # Choose a random start
       self.startPos = (self.np_random.integers(low=0, high=self.gridSize[0], dtype=np.int32),0)
-    else:
-      # Choose a fixed start
-      self.startPos = (1,0)
 
-    # Place the start
-    self.grid[self.startPos[0]][self.startPos[1]] = InternalCellType.START.value
+    # Place the start(s)
+    for startPos in self.startPositions:
+      self.grid[startPos[0]][startPos[1]] = InternalCellType.START.value
 
-    # Place the goals
+    # Place the goal(s)
     for goalPos in self.goalPositions:
       self.grid[goalPos[0]][goalPos[1]] = InternalCellType.GOAL.value
 
-    # Fixed pre-placed rocks (near start)
-    for row in range(self.gridSize[0]):
-      if row != self.startPos[0]:
-        self.grid[row][0] = InternalCellType.ROCK.value
+    # # Fixed pre-placed rocks (near start)
+    # for row in range(self.gridSize[0]):
+    #   if row != self.startPos[0]:
+    #     self.grid[row][0] = InternalCellType.ROCK.value
 
     self.checkpoints = []
     if self.random_map:
@@ -337,11 +302,11 @@ class PatheryEnv(gym.Env):
     # There is no path to the goal
     return 0
 
-  def calculateShortestPath(self):
+  def calculateShortestPathFromSingleStart(self, startPos):
     if len(self.checkpoints) == 0:
-      return self.calculateShortestSubpath(self.startPos, InternalCellType.GOAL.value)
+      return self.calculateShortestSubpath(startPos, InternalCellType.GOAL.value)
 
-    sum = self.calculateShortestSubpath(self.startPos, self.checkpoints[0][2])
+    sum = self.calculateShortestSubpath(startPos, self.checkpoints[0][2])
     if sum == 0:
       # If any path is blocked, the entire path length is 0
       return 0
@@ -357,6 +322,13 @@ class PatheryEnv(gym.Env):
       return 0
     sum += calculatedPathLength
     return sum
+
+  def calculateShortestPath(self):
+    pathLengths = [self.calculateShortestPathFromSingleStart(startPos) for startPos in self.startPositions]
+    nonZeroPathLengths = [item for item in pathLengths if item != 0]
+    if nonZeroPathLengths:
+      return min(nonZeroPathLengths)
+    return 0
 
   def _render_ansi(self):
     ansi_map = {

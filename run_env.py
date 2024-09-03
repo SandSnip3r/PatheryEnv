@@ -5,10 +5,11 @@ import pathery_env
 from enum import Enum
 import numpy as np
 
+mapString = '24.16.10.EasyAndHard...:33,s1.14,r1.,r1.,r1.,r1.,r1.,r1.,r1.,r1.,r1.,r1.278,r1.10,r1.,r1.,r1.,r1.,r1.,r1.,r1.,r1.,r1.,r1.,r1.,r1.1,f1.,c1.'
+
 if __name__ == "__main__":
-  # env = gym.make('pathery_env/Pathery-HardCoded', render_mode='ansi')
   # env = gym.make('pathery_env/Pathery-RandomNormal', render_mode='ansi')
-  env = gym.make('pathery_env/Pathery-FromMapString', render_mode='ansi', map_string='6.5.4.Testmap...:,s1.4,r3.,r3.,r1.3,r3.,r3.4,r3.,r3.3,r1.,r3.,r3.4,f1.')
+  env = gym.make('pathery_env/Pathery-FromMapString', render_mode='ansi', map_string=mapString)
 
   obs, info = env.reset()
   done = False
