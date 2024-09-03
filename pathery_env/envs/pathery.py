@@ -311,7 +311,11 @@ class PatheryEnv(gym.Env):
     # There is no path to the goal
     return 0
 
-  def _calculateShortestPathFromSingleStart(self, startPos):
+  def _calculateShortestPath(self):
+    if len(self.startPositions) > 1:
+      raise ValueError('Do not support multiple starts')
+    startPos = self.startPositions[0]
+
     if len(self.checkpoints) == 0:
       return self._calculateShortestSubpath(startPos, InternalCellType.GOAL.value)
 
@@ -331,13 +335,6 @@ class PatheryEnv(gym.Env):
       return 0
     sum += calculatedPathLength
     return sum
-
-  def _calculateShortestPath(self):
-    pathLengths = [self._calculateShortestPathFromSingleStart(startPos) for startPos in self.startPositions]
-    nonZeroPathLengths = [item for item in pathLengths if item != 0]
-    if nonZeroPathLengths:
-      return min(nonZeroPathLengths)
-    return 0
 
   def _render_ansi(self):
     ansi_map = {
