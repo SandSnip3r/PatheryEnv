@@ -10,6 +10,7 @@ obs, info = env.reset()
 done = False
 
 print(f'Start; {info}')
+print(f'Mask; {obs["action_mask"]}')
 
 def readPair():
   user_input = input("Enter two integers separated by space: ")

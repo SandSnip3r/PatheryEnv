@@ -33,7 +33,10 @@ class PatheryEnv(gym.Env):
     self.maxCheckpointCount = 2
 
     # Observation space: Each cell type is a discrete value
-    self.observation_space = spaces.MultiDiscrete(np.full((self.gridSize[0], self.gridSize[1]), len(CellType) + self.maxCheckpointCount))
+    self.observation_space = spaces.Dict({
+      'board': spaces.MultiDiscrete(np.full((self.gridSize[0], self.gridSize[1]), len(CellType) + self.maxCheckpointCount)),
+      'action_mask': spaces.Box(low=0, high=1, shape=(self.gridSize[0], self.gridSize[1]), dtype=np.int8)
+    })
 
     # Possible actions are which 2d position to place a wall in
     self.action_space = spaces.MultiDiscrete((self.gridSize[0], self.gridSize[1]))
@@ -113,12 +116,13 @@ class PatheryEnv(gym.Env):
       self.remainingWalls -= 1
     else:
       # Invalid position; reward is -1, episode terminates
-      return self._get_obs(), -1, True, False, self._get_info()
+      raise ValueError(f'Invalid action {action}')
 
     pathLength = self.calculateShortestPath()
 
     if pathLength == 0:
       # Blocks path; reward is -1 for entire episode, episode terminates
+      self.lastPathLength = 0
       return self._get_obs(), -self.rewardSoFar-1, True, False, self._get_info()
 
     terminated = self.remainingWalls == 0
@@ -153,7 +157,10 @@ class PatheryEnv(gym.Env):
       return mapping[cell]
 
     vectorized_transform = np.vectorize(transform)
-    return vectorized_transform(self.grid)
+    transformed_grid = vectorized_transform(self.grid)
+    mask = (self.grid == InternalCellType.OPEN.value)
+    return { 'board': transformed_grid,
+             'action_mask': mask.astype(np.int8) }
 
   def _get_info(self):
     return {
