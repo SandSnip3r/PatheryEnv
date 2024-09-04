@@ -17,7 +17,8 @@ if __name__ == "__main__":
     done = False
 
     print(f'Start; {info}')
-    print(f'Mask; {obs["action_mask"]}')
+    if env.unwrapped.maskInvalidActions:
+      print(f'Mask; {obs["action_mask"]}')
 
     def readPair():
       user_input = input("Enter two integers separated by space: ")
@@ -34,3 +35,4 @@ if __name__ == "__main__":
       print(f'Reward: {reward}, info: "{info}"')
       if done:
         print(env.render())
+        print(f'\n{"~"*20}End of episode{"~"*20}\n')

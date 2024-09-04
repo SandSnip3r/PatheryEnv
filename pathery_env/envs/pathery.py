@@ -18,25 +18,26 @@ class CellType(Enum):
   START = 2
   GOAL = 3
 
-def createRandomNormal(render_mode):
-  return PatheryEnv.randomNormal(render_mode)
+def createRandomNormal(render_mode, **kwargs):
+  return PatheryEnv.randomNormal(render_mode, **kwargs)
 
-def fromMapString(render_mode, map_string):
-  return PatheryEnv.fromMapString(render_mode, map_string)
+def fromMapString(render_mode, map_string, **kwargs):
+  return PatheryEnv.fromMapString(render_mode, map_string, **kwargs)
 
 class PatheryEnv(gym.Env):
   metadata = {"render_modes": ["ansi"], "render_fps": 4}
 
   @classmethod
-  def randomNormal(cls, render_mode):
-    return cls(render_mode=render_mode)
+  def randomNormal(cls, render_mode, **kwargs):
+    return cls(render_mode=render_mode, **kwargs)
 
   @classmethod
-  def fromMapString(cls, render_mode, map_string):
-    return cls(render_mode=render_mode, map_string=map_string)
+  def fromMapString(cls, render_mode, map_string, **kwargs):
+    return cls(render_mode=render_mode, map_string=map_string, **kwargs)
 
-  def __init__(self, render_mode, map_string=None):
-    self.random_map = (map_string == None)
+  def __init__(self, render_mode, map_string=None, mask_invalid_actions=False):
+    self.randomMap = (map_string == None)
+    self.maskInvalidActions = mask_invalid_actions
 
     self.startPositions = []
     self.goalPositions = []
@@ -52,10 +53,13 @@ class PatheryEnv(gym.Env):
       self.maxCheckpointCount = 2
 
     # Observation space: Each cell type is a discrete value
-    self.observation_space = spaces.Dict({
-      'board': spaces.MultiDiscrete(np.full((self.gridSize[0], self.gridSize[1]), len(CellType) + self.maxCheckpointCount)),
-      'action_mask': spaces.Box(low=0, high=1, shape=(self.gridSize[0], self.gridSize[1]), dtype=np.int8)
-    })
+    if self.maskInvalidActions:
+      self.observation_space = spaces.Dict({
+        'board': spaces.MultiDiscrete(np.full((self.gridSize[0], self.gridSize[1]), len(CellType) + self.maxCheckpointCount)),
+        'action_mask': spaces.Box(low=0, high=1, shape=(self.gridSize[0], self.gridSize[1]), dtype=np.int8)
+      })
+    else:
+      self.observation_space = spaces.MultiDiscrete(np.full((self.gridSize[0], self.gridSize[1]), len(CellType) + self.maxCheckpointCount))
 
     # Possible actions are which 2d position to place a wall in
     self.action_space = spaces.MultiDiscrete((self.gridSize[0], self.gridSize[1]))
@@ -74,7 +78,7 @@ class PatheryEnv(gym.Env):
     # Set the number of walls that the user can place
     self.remainingWalls = self.wallsToPlace
 
-    if self.random_map:
+    if self.randomMap:
       # Reset data
       self.startPositions = []
       self.goalPositions = []
@@ -114,7 +118,7 @@ class PatheryEnv(gym.Env):
       self.grid[rockPos[0]][rockPos[1]] = InternalCellType.ROCK.value
 
     # Finally, random rock placement must be done after everything else has been placed so that we can check that no rock blocks any path
-    if self.random_map:
+    if self.randomMap:
       # Pick rocks
       self._generateRandomRocks(rocksToPlace=14)
 
@@ -132,7 +136,12 @@ class PatheryEnv(gym.Env):
       self.remainingWalls -= 1
     else:
       # Invalid position; reward is -1, episode terminates
-      raise ValueError(f'Invalid action {action}')
+      if self.maskInvalidActions:
+        # When using action masking, invalid actions raise an error
+        raise ValueError(f'Invalid action {action}')
+      else:
+        # When not using action masking, invalid actions have a negative reward and terminate the episode
+        return self._get_obs(), -self.rewardSoFar-1, True, False, self._get_info()
 
     pathLength = self._calculateShortestPath()
 
@@ -169,6 +178,7 @@ class PatheryEnv(gym.Env):
 
   def _initializeFromMapString(self, map_string):
     self.maxCheckpointCount = 0
+    # https://www.pathery.com/mapeditor
     # Map string format
     # <width;int>.<height;int>.<num walls;int>.<name;string>...<unk>:([<number of open cells>],<cell type>.)*
     # Cell types:
@@ -221,9 +231,12 @@ class PatheryEnv(gym.Env):
 
     vectorized_transform = np.vectorize(transform)
     transformed_grid = vectorized_transform(self.grid)
-    mask = (self.grid == InternalCellType.OPEN.value)
-    return { 'board': transformed_grid,
-             'action_mask': mask.astype(np.int8) }
+    if self.maskInvalidActions:
+      mask = (self.grid == InternalCellType.OPEN.value)
+      return { 'board': transformed_grid,
+              'action_mask': mask.astype(np.int8) }
+    else:
+      return transformed_grid
 
   def _get_info(self):
     return {
