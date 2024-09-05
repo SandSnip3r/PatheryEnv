@@ -141,14 +141,14 @@ class PatheryEnv(gym.Env):
         raise ValueError(f'Invalid action {action}')
       else:
         # When not using action masking, invalid actions have a negative reward and terminate the episode
-        return self._get_obs(), -self.rewardSoFar-1, True, False, self._get_info()
+        return self._get_obs(), -1, True, False, self._get_info()
 
     pathLength = self._calculateShortestPath()
 
     if pathLength == 0:
-      # Blocks path; reward is -1 for entire episode, episode terminates
+      # Blocks path; reward is -1, episode terminates
       self.lastPathLength = 0
-      return self._get_obs(), -self.rewardSoFar-1, True, False, self._get_info()
+      return self._get_obs(), -1, True, False, self._get_info()
 
     terminated = self.remainingWalls == 0
     reward = pathLength - self.lastPathLength
