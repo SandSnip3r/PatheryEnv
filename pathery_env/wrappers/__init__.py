@@ -1,5 +1,2 @@
-from pathery_env.wrappers.clip_reward import ClipReward
-from pathery_env.wrappers.discrete_actions import DiscreteActions
-from pathery_env.wrappers.reacher_weighted_reward import ReacherRewardWrapper
-from pathery_env.wrappers.relative_position import RelativePosition
-from pathery_env.wrappers.action_mask import ActionMaskWrapper
+from pathery_env.wrappers.action_mask_observation import ActionMaskObservationWrapper
+from pathery_env.wrappers.convolution_observation import ConvolutionObservationWrapper

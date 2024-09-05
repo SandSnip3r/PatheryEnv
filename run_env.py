@@ -2,7 +2,8 @@
 
 import gymnasium as gym
 import pathery_env
-from pathery_env.wrappers.action_mask import ActionMaskWrapper
+from pathery_env.wrappers.action_mask_observation import ActionMaskObservationWrapper
+from pathery_env.wrappers.convolution_observation import ConvolutionObservationWrapper
 from enum import Enum
 import numpy as np
 
@@ -12,14 +13,16 @@ mapString = '17.9.14.Normal...1725422400:,r3.8,r1.6,f1.,r3.15,f1.,s1.3,r1.5,r1.5
 if __name__ == "__main__":
   # env = gym.make('pathery_env/Pathery-RandomNormal', render_mode='ansi')
   env = gym.make('pathery_env/Pathery-FromMapString', render_mode='ansi', map_string=mapString)
-  env = ActionMaskWrapper(env)
+  env = ActionMaskObservationWrapper(env)
+  env = ConvolutionObservationWrapper(env)
 
   while True:
     obs, info = env.reset()
     done = False
 
     print(f'Start; {info}')
-    if isinstance(env, ActionMaskWrapper):
+    if isinstance(env, ActionMaskObservationWrapper):
+      # TODO: Does not work when Conv is applied after ActionMask wrapper (but the action mask is in the observation)
       print(f'Mask; {obs["action_mask"]}')
 
     def readPair():

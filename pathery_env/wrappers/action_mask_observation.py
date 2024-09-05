@@ -4,7 +4,7 @@ import numpy as np
 from pathery_env.envs.pathery import InternalCellType
 from pathery_env.envs.pathery import PatheryEnv
 
-class ActionMaskWrapper(gym.ObservationWrapper):
+class ActionMaskObservationWrapper(gym.ObservationWrapper):
 
   OBSERVATION_ACTION_MASK_STR = 'action_mask'
 
@@ -12,7 +12,7 @@ class ActionMaskWrapper(gym.ObservationWrapper):
     super().__init__(env)
     self.observation_space = gym.spaces.Dict({
       PatheryEnv.OBSERVATION_BOARD_STR: env.observation_space[PatheryEnv.OBSERVATION_BOARD_STR],
-      ActionMaskWrapper.OBSERVATION_ACTION_MASK_STR: gym.spaces.Box(low=0, high=1, shape=(self.unwrapped.gridSize[0], self.unwrapped.gridSize[1]), dtype=np.int8)
+      ActionMaskObservationWrapper.OBSERVATION_ACTION_MASK_STR: gym.spaces.Box(low=0, high=1, shape=(self.unwrapped.gridSize[0], self.unwrapped.gridSize[1]), dtype=np.int8)
     })
 
   def step(self, action):
@@ -23,5 +23,5 @@ class ActionMaskWrapper(gym.ObservationWrapper):
 
   def observation(self, observation):
     mask = (observation[PatheryEnv.OBSERVATION_BOARD_STR] == InternalCellType.OPEN.value)
-    observation[ActionMaskWrapper.OBSERVATION_ACTION_MASK_STR] = mask.astype(np.int8)
+    observation[ActionMaskObservationWrapper.OBSERVATION_ACTION_MASK_STR] = mask.astype(np.int8)
     return observation
