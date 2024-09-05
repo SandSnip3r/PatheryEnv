@@ -25,6 +25,7 @@ def fromMapString(render_mode, map_string, **kwargs):
   return PatheryEnv.fromMapString(render_mode, map_string, **kwargs)
 
 class PatheryEnv(gym.Env):
+  OBSERVATION_BOARD_STR = 'board'
   metadata = {"render_modes": ["ansi"], "render_fps": 4}
 
   @classmethod
@@ -35,9 +36,8 @@ class PatheryEnv(gym.Env):
   def fromMapString(cls, render_mode, map_string, **kwargs):
     return cls(render_mode=render_mode, map_string=map_string, **kwargs)
 
-  def __init__(self, render_mode, map_string=None, mask_invalid_actions=False):
+  def __init__(self, render_mode, map_string=None):
     self.randomMap = (map_string == None)
-    self.maskInvalidActions = mask_invalid_actions
 
     self.startPositions = []
     self.goalPositions = []
@@ -53,13 +53,8 @@ class PatheryEnv(gym.Env):
       self.maxCheckpointCount = 2
 
     # Observation space: Each cell type is a discrete value
-    if self.maskInvalidActions:
-      self.observation_space = spaces.Dict({
-        'board': spaces.MultiDiscrete(np.full((self.gridSize[0], self.gridSize[1]), len(CellType) + self.maxCheckpointCount)),
-        'action_mask': spaces.Box(low=0, high=1, shape=(self.gridSize[0], self.gridSize[1]), dtype=np.int8)
-      })
-    else:
-      self.observation_space = spaces.MultiDiscrete(np.full((self.gridSize[0], self.gridSize[1]), len(CellType) + self.maxCheckpointCount))
+    self.observation_space = spaces.Dict()
+    self.observation_space[PatheryEnv.OBSERVATION_BOARD_STR] = spaces.MultiDiscrete(np.full((self.gridSize[0], self.gridSize[1]), len(CellType) + self.maxCheckpointCount))
 
     # Possible actions are which 2d position to place a wall in
     self.action_space = spaces.MultiDiscrete((self.gridSize[0], self.gridSize[1]))
@@ -136,12 +131,7 @@ class PatheryEnv(gym.Env):
       self.remainingWalls -= 1
     else:
       # Invalid position; reward is -1, episode terminates
-      if self.maskInvalidActions:
-        # When using action masking, invalid actions raise an error
-        raise ValueError(f'Invalid action {action}')
-      else:
-        # When not using action masking, invalid actions have a negative reward and terminate the episode
-        return self._get_obs(), -1, True, False, self._get_info()
+      return self._get_obs(), -1, True, False, self._get_info()
 
     pathLength = self._calculateShortestPath()
 
@@ -230,13 +220,9 @@ class PatheryEnv(gym.Env):
       return mapping[cell]
 
     vectorized_transform = np.vectorize(transform)
-    transformed_grid = vectorized_transform(self.grid)
-    if self.maskInvalidActions:
-      mask = (self.grid == InternalCellType.OPEN.value)
-      return { 'board': transformed_grid,
-              'action_mask': mask.astype(np.int8) }
-    else:
-      return transformed_grid
+    return {
+      PatheryEnv.OBSERVATION_BOARD_STR: vectorized_transform(self.grid)
+    }
 
   def _get_info(self):
     return {
