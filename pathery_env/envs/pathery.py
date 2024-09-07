@@ -134,6 +134,7 @@ class PatheryEnv(gym.Env):
       # Invalid position; reward is -1, episode terminates
       return self._get_obs(), -1, True, False, self._get_info()
 
+    terminated = self.remainingWalls == 0
     if action in self.lastPath:
       # Only repath if the placed block is on the last path
       self.lastPath = self._calculateShortestPath()
@@ -144,14 +145,12 @@ class PatheryEnv(gym.Env):
         self.lastPathLength = 0
         return self._get_obs(), -1, True, False, self._get_info()
 
-      terminated = self.remainingWalls == 0
       reward = pathLength - self.lastPathLength
       self.rewardSoFar += reward
       if reward < 0:
         raise ValueError(f'Reward is negative: {reward}')
       self.lastPathLength = pathLength
     else:
-      terminated = False
       reward = 0
 
     observation = self._get_obs()
