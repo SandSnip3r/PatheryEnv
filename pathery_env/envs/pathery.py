@@ -118,7 +118,8 @@ class PatheryEnv(gym.Env):
       self._generateRandomRocks(rocksToPlace=14)
 
     # Keep track of path length
-    self.lastPathLength = self._calculateShortestPath()
+    self.lastPath = self._calculateShortestPath()
+    self.lastPathLength = len(self.lastPath)
 
     observation = self._get_obs()
     info = self._get_info()
@@ -133,19 +134,25 @@ class PatheryEnv(gym.Env):
       # Invalid position; reward is -1, episode terminates
       return self._get_obs(), -1, True, False, self._get_info()
 
-    pathLength = self._calculateShortestPath()
+    if action in self.lastPath:
+      # Only repath if the placed block is on the last path
+      self.lastPath = self._calculateShortestPath()
+      pathLength = len(self.lastPath)
 
-    if pathLength == 0:
-      # Blocks path; reward is -1, episode terminates
-      self.lastPathLength = 0
-      return self._get_obs(), -1, True, False, self._get_info()
+      if pathLength == 0:
+        # Blocks path; reward is -1, episode terminates
+        self.lastPathLength = 0
+        return self._get_obs(), -1, True, False, self._get_info()
 
-    terminated = self.remainingWalls == 0
-    reward = pathLength - self.lastPathLength
-    self.rewardSoFar += reward
-    if reward < 0:
-      raise ValueError(f'Reward is negative: {reward}')
-    self.lastPathLength = pathLength
+      terminated = self.remainingWalls == 0
+      reward = pathLength - self.lastPathLength
+      self.rewardSoFar += reward
+      if reward < 0:
+        raise ValueError(f'Reward is negative: {reward}')
+      self.lastPathLength = pathLength
+    else:
+      terminated = False
+      reward = 0
 
     observation = self._get_obs()
     info = self._get_info()
@@ -266,8 +273,8 @@ class PatheryEnv(gym.Env):
       
       # Place the rock and test if a path still exists
       self.grid[randomRow][randomCol] = InternalCellType.ROCK.value
-      shortestPath = self._calculateShortestPath()
-      if shortestPath != 0:
+      shortestPathLength = len(self._calculateShortestPath())
+      if shortestPathLength != 0:
         # Success
         self.rocks.append((int(randomRow),int(randomCol)))
         rocksToPlace -= 1
@@ -276,23 +283,32 @@ class PatheryEnv(gym.Env):
         self.grid[randomRow][randomCol] = InternalCellType.OPEN.value
 
   def _calculateShortestSubpath(self, subStartPos, goalType):
-    # Directions for moving: right, left, down, up
-    directions = [(0, 1), (0, -1), (1, 0), (-1, 0)]
+    # Directions for moving: up, right, down, left (this is the order preferred by Pathery)
+    directions = [(-1, 0), (0, 1), (1, 0), (0, -1)]
     
     # Create a queue for BFS and add the starting point
-    queue = deque([(subStartPos, 0)])
+    queue = deque([subStartPos])
     
     # Set of visited nodes
     visited = set()
     visited.add(subStartPos)
+    prev = {}
+
+    def buildPath(end):
+      path = []
+      while end in prev:
+        path.append(end)
+        end = prev[end]
+      return path[::-1]
+
     
     while queue:
-      # Get the current position and the path length to it
-      (current, pathLength) = queue.popleft()
+      current = queue.popleft()
       
       # If the current position is the goal, return the path
       if self.grid[current[0]][current[1]] == goalType:
-        return pathLength
+        path = buildPath(current)
+        return path
       
       # Explore all the possible directions
       for direction in directions:
@@ -304,11 +320,12 @@ class PatheryEnv(gym.Env):
           # Check if the next position is not an obstacle and not visited
           if self.grid[next_position[0]][next_position[1]] not in [InternalCellType.ROCK.value, InternalCellType.WALL.value] and next_position not in visited:
             # Add the next position to the queue and mark it as visited
-            queue.append((next_position, pathLength+1))
+            queue.append(next_position)
             visited.add(next_position)
+            prev[next_position] = current
     
     # There is no path to the goal
-    return 0
+    return []
 
   def _calculateShortestPath(self):
     if len(self.startPositions) > 1:
@@ -318,22 +335,22 @@ class PatheryEnv(gym.Env):
     if len(self.checkpoints) == 0:
       return self._calculateShortestSubpath(startPos, InternalCellType.GOAL.value)
 
-    sum = self._calculateShortestSubpath(startPos, self.checkpoints[0][2])
-    if sum == 0:
-      # If any path is blocked, the entire path length is 0
-      return 0
+    overallPath = self._calculateShortestSubpath(startPos, self.checkpoints[0][2])
+    if len(overallPath) == 0:
+      # If any sub-path is blocked, the entire path is blocked
+      return []
     for i in range(1, len(self.checkpoints)):
-      calculatedPathLength = self._calculateShortestSubpath(self.checkpoints[i-1], self.checkpoints[i][2])
-      if calculatedPathLength == 0:
-        # If any path is blocked, the entire path length is 0
-        return 0
-      sum += calculatedPathLength
-    calculatedPathLength = self._calculateShortestSubpath(self.checkpoints[-1], InternalCellType.GOAL.value)
-    if calculatedPathLength == 0:
-      # If any path is blocked, the entire path length is 0
-      return 0
-    sum += calculatedPathLength
-    return sum
+      subPath = self._calculateShortestSubpath(self.checkpoints[i-1], self.checkpoints[i][2])
+      if len(subPath) == 0:
+        # If any sub-path is blocked, the entire path is blocked
+        return []
+      overallPath.extend(subPath)
+    finalSubPath = self._calculateShortestSubpath(self.checkpoints[-1], InternalCellType.GOAL.value)
+    if len(finalSubPath) == 0:
+      # If any sub-path is blocked, the entire path is blocked
+      return []
+    overallPath.extend(finalSubPath)
+    return overallPath
 
   def _render_ansi(self):
     ansi_map = {
