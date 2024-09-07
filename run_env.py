@@ -7,8 +7,16 @@ from pathery_env.wrappers.convolution_observation import ConvolutionObservationW
 from enum import Enum
 import numpy as np
 
-# mapString = '24.16.10.EasyAndHard...:33,s1.14,r1.,r1.,r1.,r1.,r1.,r1.,r1.,r1.,r1.,r1.278,r1.10,r1.,r1.,r1.,r1.,r1.,r1.,r1.,r1.,r1.,r1.,r1.,r1.1,f1.,c1.'
-mapString = '17.9.14.Normal...1725422400:,r3.8,r1.6,f1.,r3.15,f1.,s1.3,r1.5,r1.5,f1.,r3.15,f1.,r3.8,c2.6,f1.,r3.3,r1.4,r1.6,f1.,r3.,r1.8,c1.5,f1.,r3.2,r1.3,r1.,r1.7,f1.,r3.1,r1.13,f1.'
+mapString = '13.6.8.Simple...1725768000:,r3.1,c1.9,r3.,r3.1,r1.3,r1.5,r3.,r3.1,r1.6,r1.2,r3.,r3.2,r1.8,r3.,s1.4,r1.6,r3.,r3.7,r1.3,f1.'
+
+def isWrappedBy(env, wrapper_type):
+  """Recursively unwrap env to check if any wrapper is of type wrapper_type."""
+  current_env = env
+  while isinstance(current_env, gym.Wrapper):
+    if isinstance(current_env, wrapper_type):
+      return True
+    current_env = current_env.env  # Unwrap to the next level
+  return False
 
 if __name__ == "__main__":
   # env = gym.make('pathery_env/Pathery-RandomNormal', render_mode='ansi')
@@ -21,8 +29,7 @@ if __name__ == "__main__":
     done = False
 
     print(f'Start; {info}')
-    if isinstance(env, ActionMaskObservationWrapper):
-      # TODO: Does not work when Conv is applied after ActionMask wrapper (but the action mask is in the observation)
+    if isWrappedBy(env, ActionMaskObservationWrapper):
       print(f'Mask; {obs["action_mask"]}')
 
     def readPair():

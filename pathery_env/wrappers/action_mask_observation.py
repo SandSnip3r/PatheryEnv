@@ -3,13 +3,25 @@ import numpy as np
 
 from pathery_env.envs.pathery import InternalCellType
 from pathery_env.envs.pathery import PatheryEnv
+from pathery_env.wrappers.convolution_observation import ConvolutionObservationWrapper
 
 class ActionMaskObservationWrapper(gym.ObservationWrapper):
 
   OBSERVATION_ACTION_MASK_STR = 'action_mask'
 
   def __init__(self, env):
+
+    def isWrappedBy(env, wrapper_type):
+      """Recursively unwrap env to check if any wrapper is of type wrapper_type."""
+      current_env = env
+      while isinstance(current_env, gym.Wrapper):
+        if isinstance(current_env, wrapper_type):
+          return True
+        current_env = current_env.env  # Unwrap to the next level
+      return False
+
     super().__init__(env)
+    self.isWrappedByConv = isWrappedBy(env, ConvolutionObservationWrapper)
     self.observation_space = gym.spaces.Dict({
       PatheryEnv.OBSERVATION_BOARD_STR: env.observation_space[PatheryEnv.OBSERVATION_BOARD_STR],
       ActionMaskObservationWrapper.OBSERVATION_ACTION_MASK_STR: gym.spaces.Box(low=0, high=1, shape=(self.unwrapped.gridSize[0], self.unwrapped.gridSize[1]), dtype=np.int8)
@@ -22,6 +34,9 @@ class ActionMaskObservationWrapper(gym.ObservationWrapper):
     return super().step(action)
 
   def observation(self, observation):
-    mask = (observation[PatheryEnv.OBSERVATION_BOARD_STR] == InternalCellType.OPEN.value)
+    if self.isWrappedByConv:
+      mask = (observation[PatheryEnv.OBSERVATION_BOARD_STR][0] == 1.0)
+    else:
+      mask = (observation[PatheryEnv.OBSERVATION_BOARD_STR] == InternalCellType.OPEN.value)
     observation[ActionMaskObservationWrapper.OBSERVATION_ACTION_MASK_STR] = mask.astype(np.int8)
     return observation
