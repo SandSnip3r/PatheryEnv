@@ -1,3 +1,4 @@
 from pathery_env.wrappers.action_mask_observation import ActionMaskObservationWrapper
 from pathery_env.wrappers.convolution_observation import ConvolutionObservationWrapper
 from pathery_env.wrappers.flatten_action import FlattenActionWrapper
+from pathery_env.wrappers.undict_observation import UnDictObservationWrapper

@@ -13,7 +13,7 @@ class ConvolutionObservationWrapper(gym.ObservationWrapper):
     self.width = self.original_board_observation_space.shape[1]
     self.observation_space = gym.spaces.Dict({
       **{key: value for key, value in env.observation_space.spaces.items()},
-      PatheryEnv.OBSERVATION_BOARD_STR: gym.spaces.Box(low=0.0, high=1.1, shape=(self.channel_count, self.height, self.width), dtype=np.float32)
+      PatheryEnv.OBSERVATION_BOARD_STR: gym.spaces.Box(low=0.0, high=1.0, shape=(self.channel_count, self.height, self.width), dtype=np.float32)
     })
 
   def observation(self, observation):
