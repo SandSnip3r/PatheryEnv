@@ -193,6 +193,7 @@ class PatheryEnv(gym.Env):
     # Save rocks, start(s), goal(s), and checkpoint(s) from map string
     mapCells = map.split('.')
     currentIndex = -1
+    tmpCheckpoints = []
     for cell in mapCells:
       if cell:
         freeCellCount, cellType = cell.split(',')
@@ -208,8 +209,12 @@ class PatheryEnv(gym.Env):
         elif cellType == 's1':
           self.startPositions.append((row,col))
         elif cellType[0:1] == 'c':
-          self.checkpoints.append((row, col, len(InternalCellType)-1+int(cellType[1:])))
-          self.maxCheckpointCount += 1
+          # Add checkpoints to a list so that we can later sort them by index. This lets us receive them out of order.
+          tmpCheckpoints.append((int(cellType[1:]), (row, col)))
+    sortedCheckpoints = [t[1] for t in sorted(tmpCheckpoints, key=lambda x: x[0])]
+    for row, col in sortedCheckpoints:
+      self.checkpoints.append((row, col, len(InternalCellType)-1+len(self.checkpoints)+1))
+    self.maxCheckpointCount = len(self.checkpoints)
 
   def _get_obs(self):
     mapping = {
