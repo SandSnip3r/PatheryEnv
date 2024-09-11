@@ -21,16 +21,15 @@ def isWrappedBy(env, wrapper_type):
 if __name__ == "__main__":
   # env = gym.make('pathery_env/Pathery-RandomNormal', render_mode='ansi')
   env = gym.make('pathery_env/Pathery-FromMapString', render_mode='ansi', map_string=mapString)
-  env = ActionMaskObservationWrapper(env)
   env = ConvolutionObservationWrapper(env)
 
   while True:
     obs, info = env.reset()
     done = False
 
-    print(f'Start; {info}')
     if isWrappedBy(env, ActionMaskObservationWrapper):
       print(f'Mask; {obs["action_mask"]}')
+    print(f'Start; {info}')
 
     def readPair():
       user_input = input("Enter two integers separated by space: ")

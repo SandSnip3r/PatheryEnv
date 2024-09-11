@@ -127,15 +127,16 @@ class PatheryEnv(gym.Env):
     return observation, info
 
   def step(self, action):
-    if self.grid[action[0]][action[1]] != InternalCellType.OPEN.value:
+    tupledAction = (action[0], action[1])
+    if self.grid[tupledAction[0]][tupledAction[1]] != InternalCellType.OPEN.value:
       # Invalid position; reward is -1, episode terminates
       return self._get_obs(), -1, True, False, self._get_info()
 
-    self.grid[action[0]][action[1]] = InternalCellType.WALL.value
+    self.grid[tupledAction[0]][tupledAction[1]] = InternalCellType.WALL.value
     self.remainingWalls -= 1
     terminated = self.remainingWalls == 0
 
-    if action in self.lastPath:
+    if tupledAction in self.lastPath:
       # Only repath if the placed wall is on the current shortest path
       self.lastPath = self._calculateShortestPath()
       pathLength = len(self.lastPath)
