@@ -116,9 +116,10 @@ class PatheryEnv(gym.Env):
     if self.randomMap:
       # Pick rocks
       self._generateRandomRocks(rocksToPlace=14)
+    else:
+      self.lastPath = self._calculateShortestPath()
 
     # Keep track of path length
-    self.lastPath = self._calculateShortestPath()
     self.lastPathLength = len(self.lastPath)
 
     observation = self._get_obs()
@@ -268,6 +269,7 @@ class PatheryEnv(gym.Env):
     
   def _generateRandomRocks(self, rocksToPlace:int):
     """Generates a random grid where it is possible to reach the end"""
+    self.lastPath = self._calculateShortestPath()
     while rocksToPlace > 0:
       # Generate a random position
       randomRow, randomCol = self._randomPos()
@@ -278,7 +280,10 @@ class PatheryEnv(gym.Env):
       
       # Place the rock and test if a path still exists
       self.grid[randomRow][randomCol] = InternalCellType.ROCK.value
-      shortestPathLength = len(self._calculateShortestPath())
+      needToRePath = len(self.lastPath) == 0 or (randomRow, randomCol) in self.lastPath
+      if needToRePath:
+        self.lastPath = self._calculateShortestPath()
+      shortestPathLength = len(self.lastPath)
       if shortestPathLength != 0:
         # Success
         self.rocks.append((int(randomRow),int(randomCol)))
