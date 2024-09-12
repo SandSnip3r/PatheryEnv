@@ -257,7 +257,7 @@ class PatheryEnv(gym.Env):
       pos = (int(row), int(col))
 
       # Check if the cell is open
-      if pos in self.startPositions or pos in self.goalPositions or pos in self.rocks:
+      if pos in self.startPositions or pos in self.goalPositions or pos in self.rocks or any(pos == t[:len(pos)] for t in self.checkpoints):
         continue
       
       # Place the checkpoint
