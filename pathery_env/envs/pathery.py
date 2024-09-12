@@ -11,12 +11,16 @@ class InternalCellType(Enum):
   WALL = 2
   START = 3
   GOAL = 4
+  ICE = 5
+# Checkpoints follow the last item
 
 class CellType(Enum):
   OPEN = 0
   BLOCKED = 1
   START = 2
   GOAL = 3
+  ICE = 4
+# Checkpoints follow the last item
 
 def createRandomNormal(render_mode, **kwargs):
   return PatheryEnv.randomNormal(render_mode, **kwargs)
@@ -42,6 +46,7 @@ class PatheryEnv(gym.Env):
     self.startPositions = []
     self.goalPositions = []
     self.rocks = []
+    self.ice = []
     self.checkpoints = []
 
     if map_string is not None:
@@ -52,7 +57,7 @@ class PatheryEnv(gym.Env):
       self.wallsToPlace = 14
       self.maxCheckpointCount = 2
 
-    # Observation space: Each cell type is a discrete value
+    # Observation space: Each cell type is a discrete value, checkpoints are dynamically added on the end
     self.observation_space = spaces.Dict()
     self.observation_space[PatheryEnv.OBSERVATION_BOARD_STR] = spaces.MultiDiscrete(np.full((self.gridSize[0], self.gridSize[1]), len(CellType) + self.maxCheckpointCount))
 
@@ -104,13 +109,17 @@ class PatheryEnv(gym.Env):
     for goalPos in self.goalPositions:
       self.grid[goalPos[0]][goalPos[1]] = InternalCellType.GOAL.value
 
-    # Place checkpoints
-    for row, col, cellValue in self.checkpoints:
-      self.grid[row][col] = cellValue
-
     # Place rocks
     for rockPos in self.rocks:
       self.grid[rockPos[0]][rockPos[1]] = InternalCellType.ROCK.value
+
+    # Place ice
+    for icePos in self.ice:
+      self.grid[icePos[0]][icePos[1]] = InternalCellType.ICE.value
+
+    # Place checkpoints
+    for row, col, cellValue in self.checkpoints:
+      self.grid[row][col] = cellValue
 
     # Finally, random rock placement must be done after everything else has been placed so that we can check that no rock blocks any path
     if self.randomMap:
@@ -183,6 +192,7 @@ class PatheryEnv(gym.Env):
     #   r1: Map-pre-placed rock
     #   r2: Player-placed wall
     #   r3: Map boundary rock
+    #   z5: Ice
     #   s1: Start (1st path)
     #   s2: Start (2nd path)
     #   f1: Finish/goal
@@ -206,6 +216,8 @@ class PatheryEnv(gym.Env):
         row, col = self._linearTo2d(currentIndex)
         if cellType == 'r1' or cellType == 'r3':
           self.rocks.append((row,col))
+        elif cellType == 'z5':
+          self.ice.append((row,col))
         elif cellType == 'f1':
           self.goalPositions.append((row,col))
         elif cellType == 's1':
@@ -213,6 +225,8 @@ class PatheryEnv(gym.Env):
         elif cellType[0:1] == 'c':
           # Add checkpoints to a list so that we can later sort them by index. This lets us receive them out of order.
           tmpCheckpoints.append((int(cellType[1:]), (row, col)))
+        else:
+          print(f'WARNING: When parsing map string, encountered unknown cell "{cellType}" at pos ({row},{col}).')
     sortedCheckpoints = [t[1] for t in sorted(tmpCheckpoints, key=lambda x: x[0])]
     for row, col in sortedCheckpoints:
       self.checkpoints.append((row, col, len(InternalCellType)-1+len(self.checkpoints)+1))
@@ -224,7 +238,8 @@ class PatheryEnv(gym.Env):
       InternalCellType.ROCK.value: CellType.BLOCKED.value,
       InternalCellType.WALL.value: CellType.BLOCKED.value,
       InternalCellType.START.value: CellType.START.value,
-      InternalCellType.GOAL.value: CellType.GOAL.value
+      InternalCellType.GOAL.value: CellType.GOAL.value,
+      InternalCellType.ICE.value: CellType.ICE.value
     }
 
     def transform(cell):
@@ -297,42 +312,44 @@ class PatheryEnv(gym.Env):
     directions = [(-1, 0), (0, 1), (1, 0), (0, -1)]
     
     # Create a queue for BFS and add the starting point
-    queue = deque([subStartPos])
+    start = (subStartPos, None)
+    queue = deque([start])
     
     # Set of visited nodes
     visited = set()
-    visited.add(subStartPos)
+    visited.add(start)
     prev = {}
 
     def buildPath(end):
       path = []
       while end in prev:
-        path.append(end)
+        path.append(end[0])
         end = prev[end]
       return path[::-1]
-
     
     while queue:
       current = queue.popleft()
+      currentPosition, currentDirection = current
       
       # If the current position is the goal, return the path
-      if self.grid[current[0]][current[1]] == goalType:
-        path = buildPath(current)
-        return path
+      if self.grid[currentPosition[0]][currentPosition[1]] == goalType:
+        return buildPath(current)
       
       # Explore all the possible directions
-      for direction in directions:
+      for direction in (directions if currentDirection is None else [currentDirection]):
         # Calculate the next position
-        next_position = (current[0] + direction[0], current[1] + direction[1])
+        nextPosition = (currentPosition[0] + direction[0], currentPosition[1] + direction[1])
         
         # Check if the next position is within the grid bounds
-        if (0 <= next_position[0] < self.gridSize[0]) and (0 <= next_position[1] < self.gridSize[1]):
+        if (0 <= nextPosition[0] < self.gridSize[0]) and (0 <= nextPosition[1] < self.gridSize[1]):
           # Check if the next position is not an obstacle and not visited
-          if self.grid[next_position[0]][next_position[1]] not in [InternalCellType.ROCK.value, InternalCellType.WALL.value] and next_position not in visited:
-            # Add the next position to the queue and mark it as visited
-            queue.append(next_position)
-            visited.add(next_position)
-            prev[next_position] = current
+          if self.grid[nextPosition[0]][nextPosition[1]] not in [InternalCellType.ROCK.value, InternalCellType.WALL.value]:
+            next = (nextPosition, (direction if self.grid[nextPosition[0]][nextPosition[1]] == InternalCellType.ICE.value else None))
+            if next not in visited:
+              # Add the next position to the queue and mark it as visited
+              queue.append(next)
+              visited.add(next)
+              prev[next] = current
     
     # There is no path to the goal
     return []
@@ -364,11 +381,12 @@ class PatheryEnv(gym.Env):
 
   def _render_ansi(self):
     ansi_map = {
-      InternalCellType.OPEN: '░',  # Open cells
+      InternalCellType.OPEN: ' ',  # Open cells
       InternalCellType.ROCK: '█',  # Blocked as a pre-existing part of the map
       InternalCellType.WALL: '#',  # Blocked by player
       InternalCellType.START: 'S', # Start
-      InternalCellType.GOAL: 'G'   # Goal
+      InternalCellType.GOAL: 'G',   # Goal
+      InternalCellType.ICE: '░'  # Ice cells
     }
     def getChar(val):
       if val >= len(InternalCellType):
