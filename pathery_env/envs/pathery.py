@@ -118,8 +118,11 @@ class PatheryEnv(gym.Env):
       self.grid[icePos[0]][icePos[1]] = InternalCellType.ICE.value
 
     # Place checkpoints
-    for row, col, cellValue in self.checkpoints:
-      self.grid[row][col] = cellValue
+    for row, col, checkpointIndex in self.checkpoints:
+      self.grid[row][col] = self._checkpointIndexToCellValue(checkpointIndex)
+
+    # Save checkpoint indices (rather than needing to repeatedly dedup them on every pathfind)
+    self.checkpointIndices = sorted(list({self._checkpointIndexToCellValue(index) for _,_,index in self.checkpoints}))
 
     # Finally, random rock placement must be done after everything else has been placed so that we can check that no rock blocks any path
     if self.randomMap:
@@ -206,7 +209,6 @@ class PatheryEnv(gym.Env):
     # Save rocks, start(s), goal(s), and checkpoint(s) from map string
     mapCells = map.split('.')
     currentIndex = -1
-    tmpCheckpoints = []
     for cell in mapCells:
       if cell:
         freeCellCount, cellType = cell.split(',')
@@ -225,13 +227,11 @@ class PatheryEnv(gym.Env):
           self.startPositions.append((row,col))
         elif cellType[0:1] == 'c':
           # Add checkpoints to a list so that we can later sort them by index. This lets us receive them out of order.
-          tmpCheckpoints.append((int(cellType[1:]), (row, col)))
+          self.checkpoints.append((row, col, int(cellType[1:])-1))
         else:
           print(f'WARNING: When parsing map string, encountered unknown cell "{cellType}" at pos ({row},{col}).')
-    sortedCheckpoints = [t[1] for t in sorted(tmpCheckpoints, key=lambda x: x[0])]
-    for row, col in sortedCheckpoints:
-      self.checkpoints.append((row, col, len(InternalCellType)-1+len(self.checkpoints)+1))
-    self.maxCheckpointCount = len(self.checkpoints)
+    # Count the number of unique checkpoint indices.
+    self.maxCheckpointCount = len({x[2] for x in self.checkpoints})
 
   def _get_obs(self):
     mapping = {
@@ -360,20 +360,21 @@ class PatheryEnv(gym.Env):
       raise ValueError('Do not support multiple starts')
     startPos = self.startPositions[0]
 
-    if len(self.checkpoints) == 0:
+    if len(self.checkpointIndices) == 0:
+      # No checkpoints, path directly from the start to the goal.
       return self._calculateShortestSubpath(startPos, InternalCellType.GOAL.value)
 
-    overallPath = self._calculateShortestSubpath(startPos, self.checkpoints[0][2])
+    overallPath = self._calculateShortestSubpath(startPos, self.checkpointIndices[0])
     if len(overallPath) == 0:
       # If any sub-path is blocked, the entire path is blocked
       return []
-    for i in range(1, len(self.checkpoints)):
-      subPath = self._calculateShortestSubpath(self.checkpoints[i-1], self.checkpoints[i][2])
+    for checkpointIndex in self.checkpointIndices[1:]:
+      subPath = self._calculateShortestSubpath(overallPath[-1], checkpointIndex)
       if len(subPath) == 0:
         # If any sub-path is blocked, the entire path is blocked
         return []
       overallPath.extend(subPath)
-    finalSubPath = self._calculateShortestSubpath(self.checkpoints[-1], InternalCellType.GOAL.value)
+    finalSubPath = self._calculateShortestSubpath(overallPath[-1], InternalCellType.GOAL.value)
     if len(finalSubPath) == 0:
       # If any sub-path is blocked, the entire path is blocked
       return []
@@ -402,3 +403,6 @@ class PatheryEnv(gym.Env):
     output += top_border + '\n'
     output += f'Remaining walls: {self.remainingWalls}'
     return output
+
+  def _checkpointIndexToCellValue(self, checkpointIndex):
+    return len(InternalCellType) + checkpointIndex
