@@ -20,6 +20,7 @@ class ObservationCellType(Enum):
   START = 2
   GOAL = 3
   ICE = 4
+  PATH = 5
 # Checkpoints follow the last item
 
 def createRandomNormal(render_mode, **kwargs):
@@ -249,8 +250,15 @@ class PatheryEnv(gym.Env):
       return mapping[cell]
 
     vectorized_transform = np.vectorize(transform)
+    transformed_grid = vectorized_transform(self.grid)
+
+    # Add the path to the observation
+    for pos in self.lastPath:
+      if self.grid[pos[0]][pos[1]] == InternalCellType.OPEN.value:
+        transformed_grid[pos[0]][pos[1]] = ObservationCellType.PATH.value
+
     return {
-      PatheryEnv.OBSERVATION_BOARD_STR: vectorized_transform(self.grid)
+      PatheryEnv.OBSERVATION_BOARD_STR: transformed_grid
     }
 
   def _get_info(self):
