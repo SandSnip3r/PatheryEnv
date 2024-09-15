@@ -14,7 +14,7 @@ class InternalCellType(Enum):
   ICE = 5
 # Checkpoints follow the last item
 
-class CellType(Enum):
+class ObservationCellType(Enum):
   OPEN = 0
   BLOCKED = 1
   START = 2
@@ -59,7 +59,7 @@ class PatheryEnv(gym.Env):
 
     # Observation space: Each cell type is a discrete value, checkpoints are dynamically added on the end
     self.observation_space = spaces.Dict()
-    self.observation_space[PatheryEnv.OBSERVATION_BOARD_STR] = spaces.MultiDiscrete(np.full((self.gridSize[0], self.gridSize[1]), len(CellType) + self.maxCheckpointCount))
+    self.observation_space[PatheryEnv.OBSERVATION_BOARD_STR] = spaces.MultiDiscrete(np.full((self.gridSize[0], self.gridSize[1]), len(ObservationCellType) + self.maxCheckpointCount))
 
     # Possible actions are which 2d position to place a wall in
     self.action_space = spaces.MultiDiscrete((self.gridSize[0], self.gridSize[1]))
@@ -124,6 +124,7 @@ class PatheryEnv(gym.Env):
     # Finally, random rock placement must be done after everything else has been placed so that we can check that no rock blocks any path
     if self.randomMap:
       # Pick rocks
+      # This also sets self.lastPath
       self._generateRandomRocks(rocksToPlace=14)
     else:
       self.lastPath = self._calculateShortestPath()
@@ -234,17 +235,17 @@ class PatheryEnv(gym.Env):
 
   def _get_obs(self):
     mapping = {
-      InternalCellType.OPEN.value: CellType.OPEN.value,
-      InternalCellType.ROCK.value: CellType.BLOCKED.value,
-      InternalCellType.WALL.value: CellType.BLOCKED.value,
-      InternalCellType.START.value: CellType.START.value,
-      InternalCellType.GOAL.value: CellType.GOAL.value,
-      InternalCellType.ICE.value: CellType.ICE.value
+      InternalCellType.OPEN.value: ObservationCellType.OPEN.value,
+      InternalCellType.ROCK.value: ObservationCellType.BLOCKED.value,
+      InternalCellType.WALL.value: ObservationCellType.BLOCKED.value,
+      InternalCellType.START.value: ObservationCellType.START.value,
+      InternalCellType.GOAL.value: ObservationCellType.GOAL.value,
+      InternalCellType.ICE.value: ObservationCellType.ICE.value
     }
 
     def transform(cell):
       if cell >= len(InternalCellType):
-        return cell - (len(InternalCellType) - len(CellType))
+        return cell - (len(InternalCellType) - len(ObservationCellType))
       return mapping[cell]
 
     vectorized_transform = np.vectorize(transform)
