@@ -88,6 +88,7 @@ class PatheryEnv(gym.Env):
       # Choose a random start along the left edge
       randomStartPos = (self.np_random.integers(low=0, high=self.gridSize[0], dtype=np.int32), 0)
       self.startPositions.append(randomStartPos)
+      # TODO: Once we start generating multiple starts, make sure to sort them
 
       # All other cells on the left edge must be a rock
       for row in range(self.gridSize[0]):
@@ -230,8 +231,13 @@ class PatheryEnv(gym.Env):
           self.checkpoints.append((row, col, int(cellType[1:])-1))
         else:
           print(f'WARNING: When parsing map string, encountered unknown cell "{cellType}" at pos ({row},{col}).')
+
     # Count the number of unique checkpoint indices.
     self.maxCheckpointCount = len({x[2] for x in self.checkpoints})
+
+    # Sort the start positions
+    self.startPositions.sort(key=lambda v : v[1])
+    self.startPositions.sort(key=lambda v : v[0])
 
   def _get_obs(self):
     mapping = {
@@ -356,15 +362,28 @@ class PatheryEnv(gym.Env):
     return []
 
   def _calculateShortestPath(self):
-    if len(self.startPositions) > 1:
-      raise ValueError('Do not support multiple starts')
-    startPos = self.startPositions[0]
-
     if len(self.checkpointIndices) == 0:
       # No checkpoints, path directly from the start to the goal.
-      return self._calculateShortestSubpath(startPos, InternalCellType.GOAL.value)
+      firstDestination = InternalCellType.GOAL.value
+    else:
+      # Path to first checkpoint
+      firstDestination = self.checkpointIndices[0]
 
-    overallPath = self._calculateShortestSubpath(startPos, self.checkpointIndices[0])
+    overallPath = []
+    # Calculate shortest path starting from each start position and choose the shortest one
+    for startPos in self.startPositions:
+      path = self._calculateShortestSubpath(startPos, firstDestination)
+      if len(path) > 0:
+        if len(overallPath) == 0:
+          overallPath = path
+        else:
+          if len(path) < len(overallPath):
+            overallPath = path
+
+    if len(self.checkpointIndices) == 0:
+      # No checkpoints; done
+      return overallPath
+
     if len(overallPath) == 0:
       # If any sub-path is blocked, the entire path is blocked
       return []
