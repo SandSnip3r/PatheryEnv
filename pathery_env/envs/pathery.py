@@ -1,9 +1,10 @@
 from enum import Enum
 import gymnasium as gym
 from gymnasium import spaces
-import pygame
+from dataclasses import dataclass
+from typing import List, Tuple
 import numpy as np
-from collections import deque
+from collections import deque, namedtuple
 
 class InternalCellType(Enum):
   OPEN = 0
@@ -21,6 +22,11 @@ class ObservationCellType(Enum):
   GOAL = 3
   ICE = 4
 # Checkpoints follow the last item
+
+@dataclass
+class Teleporter:
+  inPositions: List[Tuple[int, int]]
+  outPositions: List[Tuple[int, int]]
 
 def createRandomNormal(render_mode, **kwargs):
   return PatheryEnv.randomNormal(render_mode, **kwargs)
@@ -48,6 +54,7 @@ class PatheryEnv(gym.Env):
     self.rocks = []
     self.ice = []
     self.checkpoints = []
+    self.teleporters = {}
 
     if map_string is not None:
       self._initializeFromMapString(map_string)
@@ -202,6 +209,8 @@ class PatheryEnv(gym.Env):
     #   s2: Start (2nd path)
     #   f1: Finish/goal
     #   c[0-9]+: Checkpoint
+    #   t[0-9]+: Teleporter "IN"
+    #   u[0-9]+: Teleporter "OUT"
     metadata, map = map_string.split(':')
     width, height, numWalls, *_ = metadata.split('.')
     # Get size and wall count from map string
@@ -229,8 +238,28 @@ class PatheryEnv(gym.Env):
         elif cellType[0:1] == 'c':
           # Add checkpoints to a list so that we can later sort them by index. This lets us receive them out of order.
           self.checkpoints.append((row, col, int(cellType[1:])-1))
+        elif cellType[0:1] == 't':
+          teleporter_index = int(cellType[1:])
+          # print(f'Teleporter "IN" {teleporter_index}')
+          if teleporter_index in self.teleporters:
+            # print(f'Have teleporter {teleporter_index} already: {self.teleporters[teleporter_index]}')
+            self.teleporters[teleporter_index].inPositions.append((row,col))
+          else:
+            # print(f'Teleporter {teleporter_index} is new')
+            self.teleporters[teleporter_index] = Teleporter([(row,col)], [])
+        elif cellType[0:1] == 'u':
+          teleporter_index = int(cellType[1:])
+          # print(f'Teleporter "OUT" {teleporter_index}')
+          if teleporter_index in self.teleporters:
+            # print(f'Have teleporter {teleporter_index} already: {self.teleporters[teleporter_index]}')
+            self.teleporters[teleporter_index].outPositions.append((row,col))
+          else:
+            # print(f'Teleporter {teleporter_index} is new')
+            self.teleporters[teleporter_index] = Teleporter([], [(row,col)])
         else:
           print(f'WARNING: When parsing map string, encountered unknown cell "{cellType}" at pos ({row},{col}).')
+
+    # print(f'Final teleporters: {self.teleporters}')
 
     # Count the number of unique checkpoint indices.
     self.maxCheckpointCount = len({x[2] for x in self.checkpoints})
