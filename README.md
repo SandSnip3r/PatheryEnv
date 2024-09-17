@@ -2,9 +2,17 @@
 
 This is a Gymnasium environment for the game [Pathery](https://www.pathery.com/home).
 
-![pathery](images/pathery.png)
+## Simple Example
 
-![ansi](images/ansi_render.png)
+![simple_pathery](images/simple_pathery.png)
+
+![simple_ansi](images/simple_ansi_render.png)
+
+## Ultra Complex Unlimited Example
+
+![ucu_pathery](images/ucu_pathery.png)
+
+![ucu_ansi](images/ucu_ansi_render.png)
 
 ## Definitions
 
