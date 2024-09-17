@@ -42,7 +42,7 @@ if __name__ == "__main__":
       while pairInput not in env.action_space:
         print('invalid action')
         pairInput = readPair()
-      observation, reward, done, _, info = env.step(pairInput)
+      observation, reward, terminated, truncated, info = env.step(pairInput)
       print(f'Reward: {reward}, info: "{info}"')
       if done:
         print(env.render())
