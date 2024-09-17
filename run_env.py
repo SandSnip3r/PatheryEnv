@@ -7,7 +7,7 @@ from pathery_env.wrappers.convolution_observation import ConvolutionObservationW
 from enum import Enum
 import numpy as np
 
-mapString = '7.6.8.Simple...:,s1.,u1.4,t1.7,u1.20,t1.5,f1.'
+mapString = '27.19.999.Ultra Complex Unlimited...1727020800:,s1.25,r1.,r1.1,r1.14,c1.,z5.,t2.6,f1.,s1.25,r1.,r1.25,f1.,s1.5,z5.5,z5.6,z5.4,r1.1,r1.,r1.10,c5.14,f1.,s1.8,r1.,u4.5,r1.4,c2.4,r1.,r1.4,r1.1,c6.18,f1.,s1.12,r1.6,u1.,u2.4,r1.,r1.6,z5.1,t3.2,t1.4,c3.3,c4.,r1.,t4.,z5.1,f1.,s1.11,c9.13,r1.,r1.1,r1.17,r1.5,f1.,s1.9,r1.4,c7.5,z5.2,c6.1,r1.,r1.25,f1.,s1.3,z5.21,r1.,r1.9,r1.15,f1.,s1.10,c8.,u3.2,r1.10,r1.,r1.9,r1.5,r1.,r1.8,f1.,s1.25,r1.'
 
 def isWrappedBy(env, wrapper_type):
   """Recursively unwrap env to check if any wrapper is of type wrapper_type."""

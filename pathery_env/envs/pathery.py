@@ -66,7 +66,7 @@ class PatheryEnv(gym.Env):
 
     # Observation space: Each cell type is a discrete value, checkpoints are dynamically added on the end
     self.observation_space = spaces.Dict()
-    self.observation_space[PatheryEnv.OBSERVATION_BOARD_STR] = spaces.MultiDiscrete(np.full((self.gridSize[0], self.gridSize[1]), len(ObservationCellType) + self.maxCheckpointCount))
+    self.observation_space[PatheryEnv.OBSERVATION_BOARD_STR] = spaces.MultiDiscrete(np.full((self.gridSize[0], self.gridSize[1]), len(ObservationCellType) + self.maxCheckpointCount + len(self.teleporters)*2))
 
     # Possible actions are which 2d position to place a wall in
     self.action_space = spaces.MultiDiscrete((self.gridSize[0], self.gridSize[1]))
@@ -129,6 +129,13 @@ class PatheryEnv(gym.Env):
     for row, col, checkpointIndex in self.checkpoints:
       self.grid[row][col] = self._checkpointIndexToCellValue(checkpointIndex)
 
+    # Place teleporters
+    for index, teleporter in self.teleporters.items():
+      for inPos in teleporter.inPositions:
+        self.grid[inPos[0]][inPos[1]] = self._teleporterIndexToCellValue(index, isIn=True)
+      for outPos in teleporter.outPositions:
+        self.grid[outPos[0]][outPos[1]] = self._teleporterIndexToCellValue(index, isIn=False)
+
     # Save checkpoint indices (rather than needing to repeatedly dedup them on every pathfind)
     self.checkpointIndices = sorted(list({self._checkpointIndexToCellValue(index) for _,_,index in self.checkpoints}))
 
@@ -151,8 +158,8 @@ class PatheryEnv(gym.Env):
   def step(self, action):
     tupledAction = (action[0], action[1])
     if self.grid[tupledAction[0]][tupledAction[1]] != InternalCellType.OPEN.value:
-      # Invalid position; reward is -1, episode terminates
-      return self._get_obs(), -1, True, False, self._get_info()
+      # Invalid position; reward is 0, episode terminates
+      return self._get_obs(), 0, True, False, self._get_info()
 
     self.grid[tupledAction[0]][tupledAction[1]] = InternalCellType.WALL.value
     self.remainingWalls -= 1
@@ -170,8 +177,7 @@ class PatheryEnv(gym.Env):
 
       reward = pathLength - self.lastPathLength
       self.rewardSoFar += reward
-      if reward < 0:
-        raise ValueError(f'Reward is negative: {reward}')
+      # Note that with teleporters, placing a block might make the path shorter.
       self.lastPathLength = pathLength
     else:
       reward = 0
@@ -239,27 +245,20 @@ class PatheryEnv(gym.Env):
           # Add checkpoints to a list so that we can later sort them by index. This lets us receive them out of order.
           self.checkpoints.append((row, col, int(cellType[1:])-1))
         elif cellType[0:1] == 't':
-          teleporter_index = int(cellType[1:])
-          # print(f'Teleporter "IN" {teleporter_index}')
+          # Teleporters
+          teleporter_index = int(cellType[1:])-1
           if teleporter_index in self.teleporters:
-            # print(f'Have teleporter {teleporter_index} already: {self.teleporters[teleporter_index]}')
             self.teleporters[teleporter_index].inPositions.append((row,col))
           else:
-            # print(f'Teleporter {teleporter_index} is new')
             self.teleporters[teleporter_index] = Teleporter([(row,col)], [])
         elif cellType[0:1] == 'u':
-          teleporter_index = int(cellType[1:])
-          # print(f'Teleporter "OUT" {teleporter_index}')
+          teleporter_index = int(cellType[1:])-1
           if teleporter_index in self.teleporters:
-            # print(f'Have teleporter {teleporter_index} already: {self.teleporters[teleporter_index]}')
             self.teleporters[teleporter_index].outPositions.append((row,col))
           else:
-            # print(f'Teleporter {teleporter_index} is new')
             self.teleporters[teleporter_index] = Teleporter([], [(row,col)])
         else:
           print(f'WARNING: When parsing map string, encountered unknown cell "{cellType}" at pos ({row},{col}).')
-
-    # print(f'Final teleporters: {self.teleporters}')
 
     # Count the number of unique checkpoint indices.
     self.maxCheckpointCount = len({x[2] for x in self.checkpoints})
@@ -390,7 +389,38 @@ class PatheryEnv(gym.Env):
     # There is no path to the goal
     return []
 
+  def _calculateShortestPathFromMultipleStarts(self, startPositions, destinationType):
+    finalPath = []
+    # Calculate shortest path starting from each start position and choose the shortest one
+    for startPosition in startPositions:
+      path = self._calculateShortestSubpath(startPosition, destinationType)
+      if len(path) > 0:
+        if len(finalPath) == 0:
+          chosenStart = startPosition
+          finalPath = path
+        else:
+          if len(path) < len(finalPath):
+            chosenStart = startPosition
+            finalPath = path
+    return finalPath
+
+  def _getPathAdjustedForTeleporters(self, currentPath, usedTeleporters, currentDestinationType):
+    # Does this path hit a teleporter?
+    for teleporterIndex, teleporter in self.teleporters.items():
+      if teleporterIndex in usedTeleporters:
+        continue
+      for inPosition in teleporter.inPositions:
+        for index, position in enumerate(currentPath):
+          if position == inPosition:
+            usedTeleporters.add(teleporterIndex)
+            postTeleporterPath = self._calculateShortestPathFromMultipleStarts(teleporter.outPositions, currentDestinationType)
+            postTeleporterPath = self._getPathAdjustedForTeleporters(postTeleporterPath, usedTeleporters, currentDestinationType)
+            return currentPath[:index+1] + postTeleporterPath
+    # Didn't hit any active teleporter.
+    return currentPath
+
   def _calculateShortestPath(self):
+    usedTeleporters = set()
     if len(self.checkpointIndices) == 0:
       # No checkpoints, path directly from the start to the goal.
       firstDestination = InternalCellType.GOAL.value
@@ -398,16 +428,8 @@ class PatheryEnv(gym.Env):
       # Path to first checkpoint
       firstDestination = self.checkpointIndices[0]
 
-    overallPath = []
-    # Calculate shortest path starting from each start position and choose the shortest one
-    for startPos in self.startPositions:
-      path = self._calculateShortestSubpath(startPos, firstDestination)
-      if len(path) > 0:
-        if len(overallPath) == 0:
-          overallPath = path
-        else:
-          if len(path) < len(overallPath):
-            overallPath = path
+    overallPath = self._calculateShortestPathFromMultipleStarts(self.startPositions, firstDestination)
+    overallPath = self._getPathAdjustedForTeleporters(overallPath, usedTeleporters, firstDestination)
 
     if len(self.checkpointIndices) == 0:
       # No checkpoints; done
@@ -418,11 +440,13 @@ class PatheryEnv(gym.Env):
       return []
     for checkpointIndex in self.checkpointIndices[1:]:
       subPath = self._calculateShortestSubpath(overallPath[-1], checkpointIndex)
+      subPath = self._getPathAdjustedForTeleporters(subPath, usedTeleporters, checkpointIndex)
       if len(subPath) == 0:
         # If any sub-path is blocked, the entire path is blocked
         return []
       overallPath.extend(subPath)
     finalSubPath = self._calculateShortestSubpath(overallPath[-1], InternalCellType.GOAL.value)
+    finalSubPath = self._getPathAdjustedForTeleporters(finalSubPath, usedTeleporters, InternalCellType.GOAL.value)
     if len(finalSubPath) == 0:
       # If any sub-path is blocked, the entire path is blocked
       return []
@@ -438,10 +462,18 @@ class PatheryEnv(gym.Env):
       InternalCellType.GOAL: 'G',   # Goal
       InternalCellType.ICE: '░'  # Ice cells
     }
+
     def getChar(val):
       if val >= len(InternalCellType):
-        # Return a character for checkpoints. First checkpoint is A, second is B, etc.
-        return chr(ord('A') + val - len(InternalCellType))
+        # Is either a checkpoint or a teleporter.
+        if val >= len(InternalCellType) + self.maxCheckpointCount:
+          # Return a character for teleporters. First teleporter is T, second is U, etc. Teleporter "IN"s are lowercase, and "OUT"s are uppercase.
+          teleporterValue = val - (len(InternalCellType) + self.maxCheckpointCount)
+          teleporterChar = ord('T') if teleporterValue%2 == 0 else ord('t')
+          return chr(teleporterChar + teleporterValue//2)
+        else:
+          # Return a character for checkpoints. First checkpoint is A, second is B, etc.
+          return chr(ord('A') + val - len(InternalCellType))
       return ansi_map[InternalCellType(val)]
 
     top_border = "+" + "-" * (self.gridSize[1] * 2 - 1) + "+"
@@ -454,3 +486,6 @@ class PatheryEnv(gym.Env):
 
   def _checkpointIndexToCellValue(self, checkpointIndex):
     return len(InternalCellType) + checkpointIndex
+
+  def _teleporterIndexToCellValue(self, index, isIn):
+    return len(InternalCellType) + self.maxCheckpointCount + index*2 + (1 if isIn else 0)
