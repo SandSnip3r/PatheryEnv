@@ -95,7 +95,7 @@ class PatheryEnv(gym.Env):
       # Choose a random start along the left edge
       randomStartPos = (self.np_random.integers(low=0, high=self.gridSize[0], dtype=np.int32), 0)
       self.startPositions.append(randomStartPos)
-      # TODO: Once we start generating multiple starts, make sure to sort them
+      # TODO: Once we start generating multiple starts, make sure to sort them. Order matters in case there is a tie when calculating the shortest path.
 
       # All other cells on the left edge must be a rock
       for row in range(self.gridSize[0]):
@@ -245,25 +245,30 @@ class PatheryEnv(gym.Env):
           # Add checkpoints to a list so that we can later sort them by index. This lets us receive them out of order.
           self.checkpoints.append((row, col, int(cellType[1:])-1))
         elif cellType[0:1] == 't':
-          # Teleporters
+          # Teleporter IN
           teleporter_index = int(cellType[1:])-1
           if teleporter_index in self.teleporters:
+            # We have already seen part of this teleporter
             self.teleporters[teleporter_index].inPositions.append((row,col))
           else:
+            # This is our first time seeing any part of this teleporter
             self.teleporters[teleporter_index] = Teleporter([(row,col)], [])
         elif cellType[0:1] == 'u':
+          # Teleporter OUT
           teleporter_index = int(cellType[1:])-1
           if teleporter_index in self.teleporters:
+            # We have already seen part of this teleporter
             self.teleporters[teleporter_index].outPositions.append((row,col))
           else:
+            # This is our first time seeing any part of this teleporter
             self.teleporters[teleporter_index] = Teleporter([], [(row,col)])
         else:
-          print(f'WARNING: When parsing map string, encountered unknown cell "{cellType}" at pos ({row},{col}).')
+          raise ValueError(f'WARNING: When parsing map string, encountered unknown cell "{cellType}" at pos ({row},{col}).')
 
-    # Count the number of unique checkpoint indices.
+    # Count the number of unique checkpoint indices using a set
     self.maxCheckpointCount = len({x[2] for x in self.checkpoints})
 
-    # Sort the start positions
+    # Stably sort the start positions. First on column, then on row.
     self.startPositions.sort(key=lambda v : v[1])
     self.startPositions.sort(key=lambda v : v[0])
 
@@ -391,20 +396,23 @@ class PatheryEnv(gym.Env):
 
   def _calculateShortestPathFromMultipleStarts(self, startPositions, destinationType):
     finalPath = []
-    # Calculate shortest path starting from each start position and choose the shortest one
+    # Calculate shortest path starting from each start position and choose the shortest one that is not empty
     for startPosition in startPositions:
       path = self._calculateShortestSubpath(startPosition, destinationType)
       if len(path) > 0:
+        # There exists a path
         if len(finalPath) == 0:
-          chosenStart = startPosition
+          # This is our first valid path
           finalPath = path
         else:
+          # Already have a path, see if the new one is shorter
           if len(path) < len(finalPath):
-            chosenStart = startPosition
+            # New path is shorter, choose it
             finalPath = path
     return finalPath
 
   def _getPathAdjustedForTeleporters(self, currentPath, usedTeleporters, currentDestinationType):
+    """Takes a path and checks if it goes into any of the active teleporters. If it does, the path will be updated to go through the teleporter and find the new shortest path to the same destination type (maybe a different instance of the destination perviously found)."""
     # Does this path hit a teleporter?
     for teleporterIndex, teleporter in self.teleporters.items():
       if teleporterIndex in usedTeleporters:
@@ -412,11 +420,15 @@ class PatheryEnv(gym.Env):
       for inPosition in teleporter.inPositions:
         for index, position in enumerate(currentPath):
           if position == inPosition:
+            # This position of the path goes into a teleporter.
             usedTeleporters.add(teleporterIndex)
+            # Find the updated path from the best OUT of this teleporter to the closest destination.
             postTeleporterPath = self._calculateShortestPathFromMultipleStarts(teleporter.outPositions, currentDestinationType)
+            # Recurse, in case we go into another teleporter with the updated path.
             postTeleporterPath = self._getPathAdjustedForTeleporters(postTeleporterPath, usedTeleporters, currentDestinationType)
+            # Concatenate and return the path to the teleporter IN and the path after the teleporter OUT.
             return currentPath[:index+1] + postTeleporterPath
-    # Didn't hit any active teleporter.
+    # Didn't hit any active teleporter, return the original path.
     return currentPath
 
   def _calculateShortestPath(self):
@@ -438,6 +450,7 @@ class PatheryEnv(gym.Env):
     if len(overallPath) == 0:
       # If any sub-path is blocked, the entire path is blocked
       return []
+
     for checkpointIndex in self.checkpointIndices[1:]:
       subPath = self._calculateShortestSubpath(overallPath[-1], checkpointIndex)
       subPath = self._getPathAdjustedForTeleporters(subPath, usedTeleporters, checkpointIndex)
@@ -447,10 +460,12 @@ class PatheryEnv(gym.Env):
       overallPath.extend(subPath)
     finalSubPath = self._calculateShortestSubpath(overallPath[-1], InternalCellType.GOAL.value)
     finalSubPath = self._getPathAdjustedForTeleporters(finalSubPath, usedTeleporters, InternalCellType.GOAL.value)
+
     if len(finalSubPath) == 0:
       # If any sub-path is blocked, the entire path is blocked
       return []
     overallPath.extend(finalSubPath)
+
     return overallPath
 
   def _render_ansi(self):
@@ -467,13 +482,15 @@ class PatheryEnv(gym.Env):
       if val >= len(InternalCellType):
         # Is either a checkpoint or a teleporter.
         if val >= len(InternalCellType) + self.maxCheckpointCount:
-          # Return a character for teleporters. First teleporter is T, second is U, etc. Teleporter "IN"s are lowercase, and "OUT"s are uppercase.
+          # Return a character for teleporters. First teleporter is T, second is U, etc.
+          # Teleporter "IN" is lowercase, and "OUT" is uppercase.
           teleporterValue = val - (len(InternalCellType) + self.maxCheckpointCount)
           teleporterChar = ord('T') if teleporterValue%2 == 0 else ord('t')
           return chr(teleporterChar + teleporterValue//2)
         else:
           # Return a character for checkpoints. First checkpoint is A, second is B, etc.
           return chr(ord('A') + val - len(InternalCellType))
+      # Is neither a checkpoint or teleporter, use the character mapping for the InternalCellType.
       return ansi_map[InternalCellType(val)]
 
     top_border = "+" + "-" * (self.gridSize[1] * 2 - 1) + "+"
