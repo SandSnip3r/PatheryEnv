@@ -3,7 +3,6 @@
 import gymnasium as gym
 import pathery_env
 from pathery_env.wrappers.action_mask_observation import ActionMaskObservationWrapper
-from pathery_env.wrappers.convolution_observation import ConvolutionObservationWrapper
 from enum import Enum
 import numpy as np
 
@@ -21,7 +20,6 @@ def isWrappedBy(env, wrapper_type):
 if __name__ == "__main__":
   # env = gym.make_vec('pathery_env/Pathery-RandomNormal', num_envs=2, vectorization_mode="sync", render_mode='ansi')
   env = gym.make_vec('pathery_env/Pathery-FromMapString', num_envs=2, vectorization_mode="sync", render_mode='ansi', map_string=mapString)
-  # env = ConvolutionObservationWrapper(env)
 
   SEED = 12
   env.action_space.seed(SEED)

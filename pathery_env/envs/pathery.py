@@ -6,21 +6,13 @@ from typing import List, Tuple
 import numpy as np
 from collections import deque, namedtuple
 
-class InternalCellType(Enum):
+class CellType(Enum):
   OPEN = 0
   ROCK = 1
   WALL = 2
   START = 3
   GOAL = 4
   ICE = 5
-# Checkpoints follow the last item
-
-class ObservationCellType(Enum):
-  OPEN = 0
-  BLOCKED = 1
-  START = 2
-  GOAL = 3
-  ICE = 4
 # Checkpoints follow the last item
 
 @dataclass
@@ -64,9 +56,11 @@ class PatheryEnv(gym.Env):
       self.wallsToPlace = 14
       self.maxCheckpointCount = 2
 
-    # Observation space: Each cell type is a discrete value, checkpoints are dynamically added on the end
+    self.cellTypeCount = len(CellType) + self.maxCheckpointCount + len(self.teleporters)*2
+
+    # Observation space: Each cell type is a discrete value, checkpoints and teleporters are dynamically added on the end
     self.observation_space = spaces.Dict()
-    self.observation_space[PatheryEnv.OBSERVATION_BOARD_STR] = spaces.MultiDiscrete(np.full((self.gridSize[0], self.gridSize[1]), len(ObservationCellType) + self.maxCheckpointCount + len(self.teleporters)*2))
+    self.observation_space[PatheryEnv.OBSERVATION_BOARD_STR] = spaces.Box(low=0.0, high=1.0, shape=(self.cellTypeCount, self.gridSize[0], self.gridSize[1]))
 
     # Possible actions are which 2d position to place a wall in
     self.action_space = spaces.MultiDiscrete((self.gridSize[0], self.gridSize[1]))
@@ -111,19 +105,19 @@ class PatheryEnv(gym.Env):
 
     # Place the start(s)
     for startPos in self.startPositions:
-      self.grid[startPos[0]][startPos[1]] = InternalCellType.START.value
+      self.grid[startPos[0]][startPos[1]] = CellType.START.value
 
     # Place the goal(s)
     for goalPos in self.goalPositions:
-      self.grid[goalPos[0]][goalPos[1]] = InternalCellType.GOAL.value
+      self.grid[goalPos[0]][goalPos[1]] = CellType.GOAL.value
 
     # Place rocks
     for rockPos in self.rocks:
-      self.grid[rockPos[0]][rockPos[1]] = InternalCellType.ROCK.value
+      self.grid[rockPos[0]][rockPos[1]] = CellType.ROCK.value
 
     # Place ice
     for icePos in self.ice:
-      self.grid[icePos[0]][icePos[1]] = InternalCellType.ICE.value
+      self.grid[icePos[0]][icePos[1]] = CellType.ICE.value
 
     # Place checkpoints
     for row, col, checkpointIndex in self.checkpoints:
@@ -157,11 +151,11 @@ class PatheryEnv(gym.Env):
 
   def step(self, action):
     tupledAction = (action[0], action[1])
-    if self.grid[tupledAction[0]][tupledAction[1]] != InternalCellType.OPEN.value:
+    if self.grid[tupledAction[0]][tupledAction[1]] != CellType.OPEN.value:
       # Invalid position; reward is 0, episode terminates
       return self._get_obs(), 0, True, False, self._get_info()
 
-    self.grid[tupledAction[0]][tupledAction[1]] = InternalCellType.WALL.value
+    self.grid[tupledAction[0]][tupledAction[1]] = CellType.WALL.value
     self.remainingWalls -= 1
     terminated = self.remainingWalls == 0
 
@@ -273,23 +267,12 @@ class PatheryEnv(gym.Env):
     self.startPositions.sort(key=lambda v : v[0])
 
   def _get_obs(self):
-    mapping = {
-      InternalCellType.OPEN.value: ObservationCellType.OPEN.value,
-      InternalCellType.ROCK.value: ObservationCellType.BLOCKED.value,
-      InternalCellType.WALL.value: ObservationCellType.BLOCKED.value,
-      InternalCellType.START.value: ObservationCellType.START.value,
-      InternalCellType.GOAL.value: ObservationCellType.GOAL.value,
-      InternalCellType.ICE.value: ObservationCellType.ICE.value
-    }
-
-    def transform(cell):
-      if cell >= len(InternalCellType):
-        return cell - (len(InternalCellType) - len(ObservationCellType))
-      return mapping[cell]
-
-    vectorized_transform = np.vectorize(transform)
+    # Expand flat grid with different cell types to one-hots for each cell position.
+    oneHot = np.zeros((self.cellTypeCount,)+self.grid.shape, dtype=np.float32)
+    for i in range(self.cellTypeCount):
+      oneHot[i] = (self.grid == i)
     return {
-      PatheryEnv.OBSERVATION_BOARD_STR: vectorized_transform(self.grid)
+      PatheryEnv.OBSERVATION_BOARD_STR: oneHot
     }
 
   def _get_info(self):
@@ -307,7 +290,7 @@ class PatheryEnv(gym.Env):
     return (row, col)
 
   def _generateRandomCheckpoints(self,checkpointCount):
-    checkpointVal = len(InternalCellType)
+    checkpointVal = len(CellType)
     while checkpointCount>0:
       row, col = self._randomPos()
       pos = (int(row), int(col))
@@ -330,11 +313,11 @@ class PatheryEnv(gym.Env):
       randomRow, randomCol = self._randomPos()
 
       # Can only place rocks in open cells
-      if self.grid[randomRow][randomCol] != InternalCellType.OPEN.value:
+      if self.grid[randomRow][randomCol] != CellType.OPEN.value:
         continue
       
       # Place the rock and test if a path still exists
-      self.grid[randomRow][randomCol] = InternalCellType.ROCK.value
+      self.grid[randomRow][randomCol] = CellType.ROCK.value
       needToRePath = len(self.lastPath) == 0 or (randomRow, randomCol) in self.lastPath
       if needToRePath:
         self.lastPath = self._calculateShortestPath()
@@ -345,7 +328,7 @@ class PatheryEnv(gym.Env):
         rocksToPlace -= 1
       else:
         # Failed to place here, reset the cell
-        self.grid[randomRow][randomCol] = InternalCellType.OPEN.value
+        self.grid[randomRow][randomCol] = CellType.OPEN.value
 
   def _calculateShortestSubpath(self, subStartPos, goalType):
     # Directions for moving: up, right, down, left (this is the order preferred by Pathery)
@@ -383,8 +366,8 @@ class PatheryEnv(gym.Env):
         # Check if the next position is within the grid bounds
         if (0 <= nextPosition[0] < self.gridSize[0]) and (0 <= nextPosition[1] < self.gridSize[1]):
           # Check if the next position is not an obstacle and not visited
-          if self.grid[nextPosition[0]][nextPosition[1]] not in [InternalCellType.ROCK.value, InternalCellType.WALL.value]:
-            next = (nextPosition, (direction if self.grid[nextPosition[0]][nextPosition[1]] == InternalCellType.ICE.value else None))
+          if self.grid[nextPosition[0]][nextPosition[1]] not in [CellType.ROCK.value, CellType.WALL.value]:
+            next = (nextPosition, (direction if self.grid[nextPosition[0]][nextPosition[1]] == CellType.ICE.value else None))
             if next not in visited:
               # Add the next position to the queue and mark it as visited
               queue.append(next)
@@ -435,7 +418,7 @@ class PatheryEnv(gym.Env):
     usedTeleporters = set()
     if len(self.checkpointIndices) == 0:
       # No checkpoints, path directly from the start to the goal.
-      firstDestination = InternalCellType.GOAL.value
+      firstDestination = CellType.GOAL.value
     else:
       # Path to first checkpoint
       firstDestination = self.checkpointIndices[0]
@@ -458,8 +441,8 @@ class PatheryEnv(gym.Env):
         # If any sub-path is blocked, the entire path is blocked
         return []
       overallPath.extend(subPath)
-    finalSubPath = self._calculateShortestSubpath(overallPath[-1], InternalCellType.GOAL.value)
-    finalSubPath = self._getPathAdjustedForTeleporters(finalSubPath, usedTeleporters, InternalCellType.GOAL.value)
+    finalSubPath = self._calculateShortestSubpath(overallPath[-1], CellType.GOAL.value)
+    finalSubPath = self._getPathAdjustedForTeleporters(finalSubPath, usedTeleporters, CellType.GOAL.value)
 
     if len(finalSubPath) == 0:
       # If any sub-path is blocked, the entire path is blocked
@@ -470,28 +453,28 @@ class PatheryEnv(gym.Env):
 
   def _render_ansi(self):
     ansi_map = {
-      InternalCellType.OPEN: ' ',  # Open cells
-      InternalCellType.ROCK: '█',  # Blocked as a pre-existing part of the map
-      InternalCellType.WALL: '#',  # Blocked by player
-      InternalCellType.START: 'S', # Start
-      InternalCellType.GOAL: 'G',   # Goal
-      InternalCellType.ICE: '░'  # Ice cells
+      CellType.OPEN: ' ',  # Open cells
+      CellType.ROCK: '█',  # Blocked as a pre-existing part of the map
+      CellType.WALL: '#',  # Blocked by player
+      CellType.START: 'S', # Start
+      CellType.GOAL: 'G',   # Goal
+      CellType.ICE: '░'  # Ice cells
     }
 
     def getChar(val):
-      if val >= len(InternalCellType):
+      if val >= len(CellType):
         # Is either a checkpoint or a teleporter.
-        if val >= len(InternalCellType) + self.maxCheckpointCount:
+        if val >= len(CellType) + self.maxCheckpointCount:
           # Return a character for teleporters. First teleporter is T, second is U, etc.
           # Teleporter "IN" is lowercase, and "OUT" is uppercase.
-          teleporterValue = val - (len(InternalCellType) + self.maxCheckpointCount)
+          teleporterValue = val - (len(CellType) + self.maxCheckpointCount)
           teleporterChar = ord('T') if teleporterValue%2 == 0 else ord('t')
           return chr(teleporterChar + teleporterValue//2)
         else:
           # Return a character for checkpoints. First checkpoint is A, second is B, etc.
-          return chr(ord('A') + val - len(InternalCellType))
-      # Is neither a checkpoint or teleporter, use the character mapping for the InternalCellType.
-      return ansi_map[InternalCellType(val)]
+          return chr(ord('A') + val - len(CellType))
+      # Is neither a checkpoint or teleporter, use the character mapping for the CellType.
+      return ansi_map[CellType(val)]
 
     top_border = "+" + "-" * (self.gridSize[1] * 2 - 1) + "+"
     output = top_border + '\n'
@@ -502,7 +485,7 @@ class PatheryEnv(gym.Env):
     return output
 
   def _checkpointIndexToCellValue(self, checkpointIndex):
-    return len(InternalCellType) + checkpointIndex
+    return len(CellType) + checkpointIndex
 
   def _teleporterIndexToCellValue(self, index, isIn):
-    return len(InternalCellType) + self.maxCheckpointCount + index*2 + (1 if isIn else 0)
+    return len(CellType) + self.maxCheckpointCount + index*2 + (1 if isIn else 0)

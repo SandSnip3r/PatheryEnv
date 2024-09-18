@@ -3,7 +3,7 @@
 import gymnasium as gym
 import pathery_env
 from pathery_env.wrappers.action_mask_observation import ActionMaskObservationWrapper
-from pathery_env.wrappers.convolution_observation import ConvolutionObservationWrapper
+from pathery_env.wrappers.flatten_board_observation import FlattenBoardObservationWrapper
 from enum import Enum
 import numpy as np
 
@@ -21,7 +21,6 @@ def isWrappedBy(env, wrapper_type):
 if __name__ == "__main__":
   # env = gym.make('pathery_env/Pathery-RandomNormal', render_mode='ansi')
   env = gym.make('pathery_env/Pathery-FromMapString', render_mode='ansi', map_string=mapString)
-  env = ConvolutionObservationWrapper(env)
 
   while True:
     obs, info = env.reset()
@@ -44,6 +43,7 @@ if __name__ == "__main__":
         pairInput = readPair()
       observation, reward, terminated, truncated, info = env.step(pairInput)
       print(f'Reward: {reward}, info: "{info}"')
+      done = terminated or truncated
       if done:
         print(env.render())
         print(f'\n{"~"*20}End of episode{"~"*20}\n')

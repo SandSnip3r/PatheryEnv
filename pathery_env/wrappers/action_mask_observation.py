@@ -1,9 +1,8 @@
 import gymnasium as gym
 import numpy as np
 
-from pathery_env.envs.pathery import InternalCellType
+from pathery_env.envs.pathery import CellType
 from pathery_env.envs.pathery import PatheryEnv
-from pathery_env.wrappers.convolution_observation import ConvolutionObservationWrapper
 
 class ActionMaskObservationWrapper(gym.ObservationWrapper):
 
@@ -21,7 +20,6 @@ class ActionMaskObservationWrapper(gym.ObservationWrapper):
       return False
 
     super().__init__(env)
-    self.isWrappedByConv = isWrappedBy(env, ConvolutionObservationWrapper)
     self.observation_space = gym.spaces.Dict({
       PatheryEnv.OBSERVATION_BOARD_STR: env.observation_space[PatheryEnv.OBSERVATION_BOARD_STR],
       ActionMaskObservationWrapper.OBSERVATION_ACTION_MASK_STR: gym.spaces.Box(low=0, high=1, shape=(self.unwrapped.gridSize[0], self.unwrapped.gridSize[1]), dtype=np.int8)
@@ -29,14 +27,11 @@ class ActionMaskObservationWrapper(gym.ObservationWrapper):
 
   def step(self, action):
     # For debugging help, check if the action is invalid, based on the grid
-    if self.unwrapped.grid[action[0]][action[1]] != InternalCellType.OPEN.value:
+    if self.unwrapped.grid[action[0]][action[1]] != CellType.OPEN.value:
       raise ValueError(f'Invalid action {action}')
     return super().step(action)
 
   def observation(self, observation):
-    if self.isWrappedByConv:
-      mask = (observation[PatheryEnv.OBSERVATION_BOARD_STR][0] == 1.0)
-    else:
-      mask = (observation[PatheryEnv.OBSERVATION_BOARD_STR] == InternalCellType.OPEN.value)
+    mask = (observation[PatheryEnv.OBSERVATION_BOARD_STR][CellType.OPEN.value] == 1.0)
     observation[ActionMaskObservationWrapper.OBSERVATION_ACTION_MASK_STR] = mask.astype(np.int8)
     return observation
