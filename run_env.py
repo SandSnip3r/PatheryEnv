@@ -7,7 +7,7 @@ from pathery_env.wrappers.flatten_action import FlattenActionWrapper
 from enum import Enum
 import numpy as np
 
-mapString = '4.3.3.Simple...1725768000:,s1.7,f1.'
+mapString = '8.8.8.Simple...1726718400:,s1.2,r1.17,r1.2,r1.14,r1.2,r1.17,r1.2,f1.'
 
 def isWrappedBy(env, wrapper_type):
   """Recursively unwrap env to check if any wrapper is of type wrapper_type."""
