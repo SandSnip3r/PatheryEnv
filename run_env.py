@@ -3,11 +3,11 @@
 import gymnasium as gym
 import pathery_env
 from pathery_env.wrappers.action_mask_observation import ActionMaskObservationWrapper
-from pathery_env.wrappers.flatten_board_observation import FlattenBoardObservationWrapper
+from pathery_env.wrappers.flatten_action import FlattenActionWrapper
 from enum import Enum
 import numpy as np
 
-mapString = '27.19.999.Ultra Complex Unlimited...1727020800:,s1.25,r1.,r1.1,r1.14,c1.,z5.,t2.6,f1.,s1.25,r1.,r1.25,f1.,s1.5,z5.5,z5.6,z5.4,r1.1,r1.,r1.10,c5.14,f1.,s1.8,r1.,u4.5,r1.4,c2.4,r1.,r1.4,r1.1,c6.18,f1.,s1.12,r1.6,u1.,u2.4,r1.,r1.6,z5.1,t3.2,t1.4,c3.3,c4.,r1.,t4.,z5.1,f1.,s1.11,c9.13,r1.,r1.1,r1.17,r1.5,f1.,s1.9,r1.4,c7.5,z5.2,c6.1,r1.,r1.25,f1.,s1.3,z5.21,r1.,r1.9,r1.15,f1.,s1.10,c8.,u3.2,r1.10,r1.,r1.9,r1.5,r1.,r1.8,f1.,s1.25,r1.'
+mapString = '4.3.3.Simple...1725768000:,s1.7,f1.'
 
 def isWrappedBy(env, wrapper_type):
   """Recursively unwrap env to check if any wrapper is of type wrapper_type."""
@@ -30,18 +30,23 @@ if __name__ == "__main__":
       print(f'Mask; {obs["action_mask"]}')
     print(f'Start; {info}')
 
-    def readPair():
+    def readAction():
+      def pairToAction(row, col):
+        height, width = env.unwrapped.gridSize
+        return col + row * width
+
       user_input = input("Enter two integers separated by space: ")
       num1, num2 = user_input.split()
-      return (int(num1), int(num2))
+      x = np.asarray([pairToAction(int(num1), int(num2))], dtype=np.int32)
+      return x
 
     while not done:
       print(env.render())
-      pairInput = readPair()
-      while pairInput not in env.action_space:
-        print('invalid action')
-        pairInput = readPair()
-      observation, reward, terminated, truncated, info = env.step(pairInput)
+      userAction = readAction()
+      while userAction not in env.action_space:
+        print(f'Action {userAction} is invalid. It must fit in {env.action_space}')
+        userAction = readAction()
+      observation, reward, terminated, truncated, info = env.step(userAction)
       print(f'Reward: {reward}, info: "{info}"')
       done = terminated or truncated
       if done:

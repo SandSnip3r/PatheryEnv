@@ -62,8 +62,9 @@ class PatheryEnv(gym.Env):
     self.observation_space = spaces.Dict()
     self.observation_space[PatheryEnv.OBSERVATION_BOARD_STR] = spaces.Box(low=0.0, high=1.0, shape=(self.cellTypeCount, self.gridSize[0], self.gridSize[1]))
 
-    # Possible actions are which 2d position to place a wall in
-    self.action_space = spaces.MultiDiscrete((self.gridSize[0], self.gridSize[1]))
+    # Possible actions are which cell to place a wall in
+    # self.action_space = spaces.MultiDiscrete((self.gridSize[0], self.gridSize[1]))
+    self.action_space = spaces.Box(low=0, high=self.gridSize[0]*self.gridSize[1]-1, dtype=np.int32)
 
     assert render_mode is None or render_mode in self.metadata["render_modes"]
     self.render_mode = render_mode
@@ -150,7 +151,11 @@ class PatheryEnv(gym.Env):
     return observation, info
 
   def step(self, action):
-    tupledAction = (action[0], action[1])
+    def actionToRowColTuple(action):
+      return (action//self.gridSize[1], action%self.gridSize[1])
+
+    # print(f'action: {action}')
+    tupledAction = actionToRowColTuple(action.item())
     if self.grid[tupledAction[0]][tupledAction[1]] != CellType.OPEN.value:
       # Invalid position; reward is 0, episode terminates
       return self._get_obs(), 0, True, False, self._get_info()

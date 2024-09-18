@@ -20,6 +20,7 @@ def isWrappedBy(env, wrapper_type):
 if __name__ == "__main__":
   # env = gym.make_vec('pathery_env/Pathery-RandomNormal', num_envs=2, vectorization_mode="sync", render_mode='ansi')
   env = gym.make_vec('pathery_env/Pathery-FromMapString', num_envs=2, vectorization_mode="sync", render_mode='ansi', map_string=mapString)
+  print(f'Action space: {env.action_space}')
 
   SEED = 12
   env.action_space.seed(SEED)
