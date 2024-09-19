@@ -151,7 +151,6 @@ class PatheryEnv(gym.Env):
     return observation, info
 
   def step(self, action):
-    print(f'Stepping with {action}')
     def actionToRowColTuple(action):
       return (action//self.gridSize[1], action%self.gridSize[1])
 
