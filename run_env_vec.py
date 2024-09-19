@@ -6,7 +6,7 @@ from pathery_env.wrappers.action_mask_observation import ActionMaskObservationWr
 from enum import Enum
 import numpy as np
 
-mapString = '8.8.8.Simple...1726718400:,s1.2,r1.17,r1.2,r1.14,r1.2,r1.17,r1.2,f1.'
+mapString = '6.2.5.Testmap...:,s1.4,f1.,s1.4,f1.'
 
 def isWrappedBy(env, wrapper_type):
   """Recursively unwrap env to check if any wrapper is of type wrapper_type."""
@@ -22,7 +22,7 @@ if __name__ == "__main__":
   env = gym.make_vec('pathery_env/Pathery-FromMapString', num_envs=2, vectorization_mode="sync", render_mode='ansi', map_string=mapString)
   print(f'Action space: {env.action_space}')
 
-  SEED = 12
+  SEED = 13
   env.action_space.seed(SEED)
   observation, info = env.reset(seed=SEED)
 
@@ -35,12 +35,39 @@ if __name__ == "__main__":
     actionSample = env.action_space.sample()
     print(f'Going to take actions:\n{actionSample}')
 
-    observation, reward, terminated, truncated, info = env.step(actionSample)
-    # print(f'observation: {observation}')
+    nextObservation, reward, terminated, truncated, info = env.step(actionSample)
+    # print(f'nextObservation: {nextObservation}')
     # print(f'reward: {reward}')
     # print(f'terminated: {terminated}')
     # print(f'truncated: {truncated}')
     # print(f'info: {info}')
+
+    finalBoards = nextObservation['board']
+    
+    finalObservationMaskKey = '_final_observation'
+    finalObservationKey = 'final_observation'
+    if finalObservationMaskKey in info:
+      print(f'Saw a final observation')
+      finalObsMask = info[finalObservationMaskKey]
+      print(f'Mask: {type(finalObsMask)},{finalObsMask.shape}: {finalObsMask}')
+      # print(f'Final obs: {info[finalObservationKey]}')
+      for i in range(len(finalObsMask)):
+        if finalObsMask[i]:
+          finalBoards[i] = info[finalObservationKey][i]['board']
+      print(f'Final boards {type(finalBoards)}: {finalBoards}')
+      # nextBoards = np.where(finalObsMask[:, np.newaxis, np.newaxis, np.newaxis], finalBoards, nextObservation['board'])
+
+    # print(f'{observation["board"]}\n->\n{nextObservation["board"]}')
+
+
+    # print(f'tmp: {tmp}')
+
+
+    # print(f'Obs: {type(observation)}')
+    # print(f'Obs: {type(observation.items())}')
+    # for i in observation.items():
+    #   print(i)
+    # print(f'Obs: {observation["board"]}')
 
     print(f'Got rewards:\n{reward}')
     print('New observations:')
