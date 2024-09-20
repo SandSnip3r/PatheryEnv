@@ -4,6 +4,9 @@ from gymnasium import spaces
 from dataclasses import dataclass
 from typing import List, Tuple
 import numpy as np
+import time
+import ctypes
+import os
 from collections import deque, namedtuple
 
 class CellType(Enum):
@@ -39,6 +42,7 @@ class PatheryEnv(gym.Env):
     return cls(render_mode=render_mode, map_string=map_string, **kwargs)
 
   def __init__(self, render_mode, map_string=None):
+    self._tryLoadingCppPathfindingLibrary()
     self.randomMap = (map_string == None)
 
     self.startPositions = []
@@ -139,7 +143,10 @@ class PatheryEnv(gym.Env):
       # This also sets self.lastPath
       self._generateRandomRocks(rocksToPlace=14)
     else:
+      startTime = time.perf_counter_ns()
       self.lastPath = self._calculateShortestPath()
+      endTime = time.perf_counter_ns()
+      print(f'Spent {(endTime-startTime)/1e6}ms finding the shortest path')
 
     # Keep track of path length
     self.lastPathLength = len(self.lastPath)
@@ -191,6 +198,22 @@ class PatheryEnv(gym.Env):
   # =========================================================================================
   # ================================ Private functions below ================================
   # =========================================================================================
+
+  def _tryLoadingCppPathfindingLibrary(self):
+    # Load the shared library
+    pathfindingLibraryPath = os.path.join(os.path.dirname(__file__), '..', 'cpp_lib', 'pathfinding.so')
+    try:
+      self.pathfindingLibrary = ctypes.CDLL(pathfindingLibraryPath)
+      # self.pathfindingLibrary.getShortestPath.restype = ctypes.c_int32
+      self.pathfindingLibrary.getShortestPath.argtypes = [
+        np.ctypeslib.ndpointer(ctypes.c_int32, flags="C_CONTIGUOUS"),
+        ctypes.c_int32,
+        ctypes.c_int32
+      ]
+      print(f'Successfully loaded C++ pathfinding library')
+    except OSError as e:
+      self.pathfindingLibrary = None
+      print(f'Failed to load C++: "{e}"')
 
   def _linearTo2d(self, pos):
     return pos//self.gridSize[1], pos%self.gridSize[1]
@@ -415,6 +438,10 @@ class PatheryEnv(gym.Env):
     return currentPath
 
   def _calculateShortestPath(self):
+    if self.pathfindingLibrary is not None:
+      print(f'Calling into C++ for pathfinding')
+      return self._calculateShortestPathCpp()
+
     usedTeleporters = set()
     if len(self.checkpointIndices) == 0:
       # No checkpoints, path directly from the start to the goal.
@@ -450,6 +477,23 @@ class PatheryEnv(gym.Env):
     overallPath.extend(finalSubPath)
 
     return overallPath
+
+  def _calculateShortestPathCpp(self):
+    # Need to give C++:
+    #   Grid
+    #   Start positions
+    #   Goal value (don't need to give position of goal(s))
+    #   Checkpoint indices
+    #   Teleporters (list of in-positions & out-positions for each)
+
+    # TODO: Actually, the checkpoints & teleporters are already in the grid, we could just quickly grab them in the C++ code. We'd just need to know how many checkpoints & teleporters there are.
+    print(f'Grid: {type(self.grid)}\n{self.grid}')
+    print(f'Start positions: {type(self.startPositions)}\n{self.startPositions}')
+    print(f'Goal value: {CellType.GOAL.value}')
+    print(f'Checkpoint indices: {self.checkpointIndices}')
+    print(f'Teleporters:\n{self.teleporters}')
+    self.pathfindingLibrary.getShortestPath(self.grid, self.gridSize[0], self.gridSize[1])
+    return []
 
   def _render_ansi(self):
     ansi_map = {
