@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import List, Tuple
 import numpy as np
 import ctypes
+import time
 import os
 from collections import deque, namedtuple
 
@@ -143,7 +144,10 @@ class PatheryEnv(gym.Env):
       # This also sets self.lastPath
       self._generateRandomRocks(rocksToPlace=14)
     else:
+      startTime = time.time_ns()
       self.lastPath = self._calculateShortestPath()
+      endTime = time.time_ns()
+      print(f'Duration {(endTime-startTime)/1.0e6}ms')
 
     # Keep track of path length
     self.lastPathLength = len(self.lastPath)

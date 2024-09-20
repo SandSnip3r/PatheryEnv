@@ -22,6 +22,9 @@ if __name__ == "__main__":
   # env = gym.make('pathery_env/Pathery-RandomNormal', render_mode='ansi')
   env = gym.make('pathery_env/Pathery-FromMapString', render_mode='ansi', map_string=mapString)
 
+  for i in range(20):
+    env.reset()
+
   while True:
     obs, info = env.reset()
     done = False
