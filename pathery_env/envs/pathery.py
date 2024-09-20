@@ -4,11 +4,11 @@ from gymnasium import spaces
 from dataclasses import dataclass
 from typing import List, Tuple
 import numpy as np
-import time
 import ctypes
 import os
 from collections import deque, namedtuple
 
+# If this is changed, make sure to change the corresponding enum in the C++ pathfinding library.
 class CellType(Enum):
   OPEN = 0
   ROCK = 1
@@ -143,10 +143,7 @@ class PatheryEnv(gym.Env):
       # This also sets self.lastPath
       self._generateRandomRocks(rocksToPlace=14)
     else:
-      startTime = time.perf_counter_ns()
       self.lastPath = self._calculateShortestPath()
-      endTime = time.perf_counter_ns()
-      print(f'Spent {(endTime-startTime)/1e6}ms finding the shortest path')
 
     # Keep track of path length
     self.lastPathLength = len(self.lastPath)
@@ -208,12 +205,16 @@ class PatheryEnv(gym.Env):
       self.pathfindingLibrary.getShortestPath.argtypes = [
         np.ctypeslib.ndpointer(ctypes.c_int32, flags="C_CONTIGUOUS"),
         ctypes.c_int32,
+        ctypes.c_int32,
+        ctypes.c_int32,
+        ctypes.c_int32,
+        np.ctypeslib.ndpointer(ctypes.c_int32, flags="C_CONTIGUOUS"),
         ctypes.c_int32
       ]
       print(f'Successfully loaded C++ pathfinding library')
     except OSError as e:
       self.pathfindingLibrary = None
-      print(f'Failed to load C++: "{e}"')
+      print(f'Failed to load C++ pathfinding library: "{e}". Using python pathfinding.')
 
   def _linearTo2d(self, pos):
     return pos//self.gridSize[1], pos%self.gridSize[1]
@@ -439,7 +440,7 @@ class PatheryEnv(gym.Env):
 
   def _calculateShortestPath(self):
     if self.pathfindingLibrary is not None:
-      print(f'Calling into C++ for pathfinding')
+      # Call into C++ for pathfinding
       return self._calculateShortestPathCpp()
 
     usedTeleporters = set()
@@ -480,20 +481,24 @@ class PatheryEnv(gym.Env):
 
   def _calculateShortestPathCpp(self):
     # Need to give C++:
-    #   Grid
-    #   Start positions
-    #   Goal value (don't need to give position of goal(s))
-    #   Checkpoint indices
-    #   Teleporters (list of in-positions & out-positions for each)
+    #   The grid
+    #   Checkpoint count
+    #   Tepeorter count
+    # The starts & goals are in the grid.
+    # The checkpoints & teleporters are in the grid, we grab them in the C++ code.
+    # We've hard-coded the CellTypes in the C++ program.
 
-    # TODO: Actually, the checkpoints & teleporters are already in the grid, we could just quickly grab them in the C++ code. We'd just need to know how many checkpoints & teleporters there are.
-    print(f'Grid: {type(self.grid)}\n{self.grid}')
-    print(f'Start positions: {type(self.startPositions)}\n{self.startPositions}')
-    print(f'Goal value: {CellType.GOAL.value}')
-    print(f'Checkpoint indices: {self.checkpointIndices}')
-    print(f'Teleporters:\n{self.teleporters}')
-    self.pathfindingLibrary.getShortestPath(self.grid, self.gridSize[0], self.gridSize[1])
-    return []
+    # Allocate an output buffer for the result. The first integer will hold the path length. The remaining will be 2 values for row,col for each position on the path.
+    # TODO: This buffer will not always be big enough to hold the path. C++ will throw an exception if the path does not fit.
+    outputBufferLength = np.prod(self.gridSize)*2*10+1
+    shortestPathOutputBuffer = np.empty(outputBufferLength, dtype=np.int32)
+
+    # Call the C++ function
+    self.pathfindingLibrary.getShortestPath(self.grid, self.gridSize[0], self.gridSize[1], self.maxCheckpointCount, len(self.teleporters), shortestPathOutputBuffer, outputBufferLength)
+
+    # Transform and return the path
+    pathLength = shortestPathOutputBuffer[0]
+    return shortestPathOutputBuffer[1:pathLength*2+1].reshape(pathLength,2)
 
   def _render_ansi(self):
     ansi_map = {
@@ -512,7 +517,7 @@ class PatheryEnv(gym.Env):
           # Return a character for teleporters. First teleporter is T, second is U, etc.
           # Teleporter "IN" is lowercase, and "OUT" is uppercase.
           teleporterValue = val - (len(CellType) + self.maxCheckpointCount)
-          teleporterChar = ord('T') if teleporterValue%2 == 0 else ord('t')
+          teleporterChar = ord('t') if teleporterValue%2 == 0 else ord('T')
           return chr(teleporterChar + teleporterValue//2)
         else:
           # Return a character for checkpoints. First checkpoint is A, second is B, etc.
@@ -532,4 +537,4 @@ class PatheryEnv(gym.Env):
     return len(CellType) + checkpointIndex
 
   def _teleporterIndexToCellValue(self, index, isIn):
-    return len(CellType) + self.maxCheckpointCount + index*2 + (1 if isIn else 0)
+    return len(CellType) + self.maxCheckpointCount + index*2 + (0 if isIn else 1)
