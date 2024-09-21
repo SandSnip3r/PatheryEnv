@@ -192,6 +192,15 @@ class PatheryEnv(gym.Env):
   def close(self):
     pass
 
+  def getSubmissionString(self):
+    ans=""
+    for i in range(self.gridSize[0]):
+      for j in range(self.gridSize[1]):
+        if self.grid[i][j] == CellType.WALL.value:
+          ans+= f'.{i},{j}'
+    ans+="."
+    return ans
+
   # =========================================================================================
   # ================================ Private functions below ================================
   # =========================================================================================
