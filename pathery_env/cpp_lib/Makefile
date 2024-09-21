@@ -23,4 +23,4 @@ main.o: main.cpp pathfinder.hpp
 	$(CXX) $(CXXFLAGS) -c main.cpp
 
 clean:
-	rm -f *.o $(TARGET)
+	rm -f *.o $(TARGET) $(EXECUTABLE)

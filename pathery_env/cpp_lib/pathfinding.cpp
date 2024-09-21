@@ -10,7 +10,7 @@
 
 extern "C" {
 
-void getShortestPath(int32_t *grid, int32_t height, int32_t width, int32_t checkpointCount, int32_t teleporterCount, int32_t *output, int32_t outputBufferSize) {
+void getShortestPath(const int32_t *grid, int32_t height, int32_t width, int32_t checkpointCount, int32_t teleporterCount, int32_t *output, int32_t outputBufferSize) {
   // auto startTime = std::chrono::high_resolution_clock::now();
   // Construct Pathfinder
   Pathfinder pathfinder(grid, height, width, checkpointCount, teleporterCount);
