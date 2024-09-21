@@ -17,11 +17,11 @@ add_executable(main_exec main.cpp)
 target_link_libraries(main_exec pathfinding)
 
 # Set output directories for shared library and executable
-set_target_properties(pathfinding PROPERTIES 
+set_target_properties(pathfinding PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
 )
 
-set_target_properties(main_exec PROPERTIES 
+set_target_properties(main_exec PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
 )
