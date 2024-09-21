@@ -3,8 +3,11 @@
 #include <algorithm>
 #include <optional>
 #include <queue>
+#include <stdexcept>
+#include <unordered_map>
+#include <unordered_set>
 
-Pathfinder::Pathfinder(int32_t *grid, int32_t height, int32_t width, int32_t checkpointCount, int32_t teleporterCount) : grid_(grid), gridHeight_(height), gridWidth_(width), checkpointCount_(checkpointCount), teleporterCount_(teleporterCount) {
+Pathfinder::Pathfinder(const int32_t *grid, int32_t height, int32_t width, int32_t checkpointCount, int32_t teleporterCount) : grid_(grid), gridHeight_(height), gridWidth_(width), checkpointCount_(checkpointCount), teleporterCount_(teleporterCount) {
   // Extract start positions from the grid.
   // Also extract teleporter info from the grid.
   const int teleporterStartValue = static_cast<int>(CellType::kLength) + checkpointCount_;
@@ -115,39 +118,99 @@ void Pathfinder::adjustPathForTeleporters(const int destinationType, std::set<in
   }
 }
 
+namespace {
+
+enum class Direction {
+  kUp,
+  kRight,
+  kDown,
+  kLeft
+};
+
+struct PositionAndMaybeDirection {
+  PositionAndMaybeDirection() = default;
+  PositionAndMaybeDirection(const Position &pos) : position(pos) {}
+  PositionAndMaybeDirection(const Position &pos, Direction dir) : position(pos), direction(dir) {}
+  Position position;
+  std::optional<Direction> direction;
+};
+
+#if DEBUG_PRINTS
+std::string toString(const Position &position) {
+  return std::to_string(position.row)+","+std::to_string(position.col);
+}
+
+std::string toString(Direction direction) {
+  if (direction == Direction::kUp) {
+    return "Up";
+  } else if (direction == Direction::kRight) {
+    return "Right";
+  } else if (direction == Direction::kDown) {
+    return "Down";
+  } else if (direction == Direction::kLeft) {
+    return "Left";
+  }
+  throw std::runtime_error("Invalid direction");
+}
+
+std::string toString(const PositionAndMaybeDirection &posAndDirection) {
+  std::string res = "("+toString(posAndDirection.position)+",";
+  if (!posAndDirection.direction) {
+    res += "None";
+  } else{
+    res += toString(*posAndDirection.direction);
+  }
+  res += ")";
+  return res;
+}
+#endif
+
+bool operator==(const PositionAndMaybeDirection &lhs, const PositionAndMaybeDirection &rhs) {
+  return lhs.position == rhs.position && lhs.direction == rhs.direction;
+}
+
+template <class T>
+inline void hash_combine(std::size_t & s, const T & v) {
+  std::hash<T> h;
+  s^= h(v) + 0x9e3779b9 + (s<< 6) + (s>> 2);
+}
+
+} // namespace
+
+// Define std::hash for PositionAndMaybeDirection.
+namespace std {
+template<>
+struct hash<PositionAndMaybeDirection> {
+  std::size_t operator()(const PositionAndMaybeDirection &pad) const {
+    std::size_t result = 0;
+    hash_combine(result, pad.position);
+    hash_combine(result, pad.direction);
+    return result;
+  }
+};
+} // namespace std
+
 std::vector<Position> Pathfinder::calculateShortestSubpath(const Position &startPosition, const int destinationType) const {
-  std::set<Position> visited;
-  std::set<Position> pushed;
-  std::map<Position, Position> previous;
-  enum class Direction {
-    kUp,
-    kRight,
-    kDown,
-    kLeft
-  };
-  struct PositionAndMaybeDirection {
-    PositionAndMaybeDirection(const Position &pos) : position(pos) {}
-    PositionAndMaybeDirection(const Position &pos, Direction dir) : position(pos), direction(dir) {}
-    Position position;
-    std::optional<Direction> direction;
-  };
   std::queue<PositionAndMaybeDirection> bfsQueue;
+  std::unordered_set<PositionAndMaybeDirection> visited;
+  std::unordered_set<PositionAndMaybeDirection> pushed;
+  std::unordered_map<PositionAndMaybeDirection, PositionAndMaybeDirection> previous;
   bfsQueue.emplace(startPosition);
   while (!bfsQueue.empty()) {
-    const PositionAndMaybeDirection posAndDirection = bfsQueue.front();
-    const Position &currentPosition = posAndDirection.position;
-    const std::optional<Direction> &direction = posAndDirection.direction;
+    const PositionAndMaybeDirection currentPosAndDirection = bfsQueue.front();
+    const Position &currentPosition = currentPosAndDirection.position;
+    const std::optional<Direction> &direction = currentPosAndDirection.direction;
 
     // Check if we found the goal
     if (grid_[posToLinear(currentPosition.row, currentPosition.col)] == destinationType) {
-      Position tmpCurrent = currentPosition;
-      std::vector<Position> path = {tmpCurrent};
+      PositionAndMaybeDirection tmpCurrent = currentPosAndDirection;
+      std::vector<Position> path = {tmpCurrent.position};
       int steps = 0;
       auto it = previous.find(tmpCurrent);
       while (it != previous.end()) {
         ++steps;
         tmpCurrent = it->second;
-        path.push_back(tmpCurrent);
+        path.push_back(tmpCurrent.position);
         it = previous.find(tmpCurrent);
       }
       // The starting position should not be in the path.
@@ -160,23 +223,24 @@ std::vector<Position> Pathfinder::calculateShortestSubpath(const Position &start
 
     visited.emplace(currentPosition);
 
-    auto pushNextPosition = [&](const Position &nextPosition, const Direction direction) {
-      if (visited.count(nextPosition) != 0) {
+    auto pushNextPosition = [&](const Position &nextPosition, const Direction nextDirection) {
+      PositionAndMaybeDirection nextPosAndDirection;
+      if (grid_[posToLinear(nextPosition.row, nextPosition.col)] == static_cast<int>(CellType::kIce)) {
+        nextPosAndDirection = PositionAndMaybeDirection(nextPosition, nextDirection);
+      } else {
+        nextPosAndDirection = PositionAndMaybeDirection(nextPosition);
+      }
+      if (visited.count(nextPosAndDirection) != 0) {
         // Already visited
         return;
       }
-      if (pushed.count(nextPosition) != 0) {
+      if (pushed.count(nextPosAndDirection) != 0) {
         // Already pushed
         return;
       }
-      previous[nextPosition] = currentPosition;
-      if (grid_[posToLinear(nextPosition.row, nextPosition.col)] == static_cast<int>(CellType::kIce)) {
-        // On ice, push direction on queue
-        bfsQueue.emplace(nextPosition, direction);
-      } else {
-        bfsQueue.emplace(nextPosition);
-      }
-      pushed.insert(nextPosition);
+      previous[nextPosAndDirection] = currentPosAndDirection;
+      bfsQueue.emplace(nextPosAndDirection);
+      pushed.insert(nextPosAndDirection);
     };
 
     // Directions for moving: up, right, down, left (this is the order preferred by Pathery)

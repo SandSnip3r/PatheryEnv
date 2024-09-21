@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <map>
 #include <set>
+#include <string>
 #include <vector>
 
 enum class CellType {
@@ -19,15 +20,25 @@ enum class CellType {
 struct Position {
   Position() = default;
   Position(int r, int c) : row(r), col(c) {}
-  int row, col;
+  int32_t row, col;
 };
+
+// Define std::hash for Position.
+namespace std {
+template<>
+struct hash<Position> {
+  std::size_t operator()(const Position &position) const {
+    return std::size_t(position.row) << 32 | position.col;
+  }
+};
+} // namespace std
 
 bool operator<(const Position &p1, const Position &p2);
 bool operator==(const Position &p1, const Position &p2);
 
 class Pathfinder {
 public:
-  Pathfinder(int32_t *grid, int32_t height, int32_t width, int32_t checkpointCount, int32_t teleporterCount);
+  Pathfinder(const int32_t *grid, int32_t height, int32_t width, int32_t checkpointCount, int32_t teleporterCount);
   std::vector<Position> calculateShortestPath() const;
 
 private:
