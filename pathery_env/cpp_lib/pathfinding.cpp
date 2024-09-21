@@ -1,4 +1,5 @@
 #include "pathfinder.hpp"
+#include "pathfinding.hpp"
 
 #include <cstdint>
 #include <chrono>
@@ -10,17 +11,17 @@
 extern "C" {
 
 void getShortestPath(int32_t *grid, int32_t height, int32_t width, int32_t checkpointCount, int32_t teleporterCount, int32_t *output, int32_t outputBufferSize) {
-  auto startTime = std::chrono::high_resolution_clock::now();
+  // auto startTime = std::chrono::high_resolution_clock::now();
   // Construct Pathfinder
   Pathfinder pathfinder(grid, height, width, checkpointCount, teleporterCount);
-  auto midTime = std::chrono::high_resolution_clock::now();
+  // auto midTime = std::chrono::high_resolution_clock::now();
 
   // Get shortest path
   const std::vector<Position> shortestPath = pathfinder.calculateShortestPath();
-  auto afterTime = std::chrono::high_resolution_clock::now();
-  const double pathfindingDuration = std::chrono::duration_cast<std::chrono::microseconds>(afterTime-midTime).count()/1000.0;
-  const double totalDuration = std::chrono::duration_cast<std::chrono::microseconds>(afterTime-startTime).count()/1000.0;
-  std::cout << "Spent " << pathfindingDuration << "ms pathfinding (" << totalDuration << " ms) total" << std::endl;
+  // auto afterTime = std::chrono::high_resolution_clock::now();
+  // const double pathfindingDuration = std::chrono::duration_cast<std::chrono::microseconds>(afterTime-midTime).count()/1000.0;
+  // const double totalDuration = std::chrono::duration_cast<std::chrono::microseconds>(afterTime-startTime).count()/1000.0;
+  // std::cout << "Spent " << pathfindingDuration << "ms pathfinding (" << totalDuration << " ms) total" << std::endl;
 
   // Serialize the shortest path into the output buffer
   output[0] = shortestPath.size();
