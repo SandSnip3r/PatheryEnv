@@ -106,6 +106,11 @@ void Pathfinder::adjustPathForTeleporters(const int destinationType, std::set<in
           usedTeleporters.insert(teleporterIndex);
           // Find the updated path from the best OUT of this teleporter to the closest destination.
           std::vector<Position> postTeleporterPath = calculateShortestPathFromMultipleStarts(indexInfoPair.second.second, destinationType);
+          if (postTeleporterPath.empty()) {
+            // No path after going through teleporter.
+            path.clear();
+            return;
+          }
           // Recurse, in case we go into another teleporter with the updated path.
           adjustPathForTeleporters(destinationType, usedTeleporters, postTeleporterPath);
           // Concatenate and return the path to the teleporter IN and the path after the teleporter OUT.

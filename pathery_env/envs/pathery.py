@@ -440,6 +440,9 @@ class PatheryEnv(gym.Env):
             usedTeleporters.add(teleporterIndex)
             # Find the updated path from the best OUT of this teleporter to the closest destination.
             postTeleporterPath = self._calculateShortestPathFromMultipleStarts(teleporter.outPositions, currentDestinationType)
+            if len(postTeleporterPath) == 0:
+              # No path after going through teleporter
+              return []
             # Recurse, in case we go into another teleporter with the updated path.
             postTeleporterPath = self._getPathAdjustedForTeleporters(postTeleporterPath, usedTeleporters, currentDestinationType)
             # Concatenate and return the path to the teleporter IN and the path after the teleporter OUT.
