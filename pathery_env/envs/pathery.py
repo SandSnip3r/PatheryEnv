@@ -140,13 +140,13 @@ class PatheryEnv(gym.Env):
     # Finally, random rock placement must be done after everything else has been placed so that we can check that no rock blocks any path
     if self.randomMap:
       # Pick rocks
-      # This also sets self.lastPath
+      # This also sets self.currentPath
       self._generateRandomRocks(rocksToPlace=14)
     else:
-      self.lastPath = self._calculateShortestPath()
+      self.currentPath = self._calculateShortestPath()
 
     # Keep track of path length
-    self.lastPathLength = len(self.lastPath)
+    self.lastPathLength = len(self.currentPath)
 
     observation = self._get_obs()
     info = self._get_info()
@@ -163,20 +163,18 @@ class PatheryEnv(gym.Env):
     self.remainingWalls -= 1
     terminated = self.remainingWalls == 0
 
-    if tupledAction in self.lastPath:
+    if tupledAction in self.currentPath:
       # Only repath if the placed wall is on the current shortest path
-      self.lastPath = self._calculateShortestPath()
-      pathLength = len(self.lastPath)
+      lastPathLength = len(self.currentPath)
+      self.currentPath = self._calculateShortestPath()
 
-      if pathLength == 0:
+      if len(self.currentPath) == 0:
         # Blocks path; reward is -1, episode terminates
-        self.lastPathLength = 0
         return self._get_obs(), -1, True, False, self._get_info()
 
-      reward = pathLength - self.lastPathLength
+      reward = len(self.currentPath) - lastPathLength
       self.rewardSoFar += reward
       # Note that with teleporters, placing a block might make the path shorter.
-      self.lastPathLength = pathLength
     else:
       reward = 0
 
@@ -310,7 +308,7 @@ class PatheryEnv(gym.Env):
 
   def _get_info(self):
     return {
-      'Path length': self.lastPathLength
+      'Path length': len(self.currentPath)
     }
 
   def _resetGrid(self):
@@ -340,7 +338,7 @@ class PatheryEnv(gym.Env):
     
   def _generateRandomRocks(self, rocksToPlace:int):
     """Generates a random grid where it is possible to reach the end"""
-    self.lastPath = self._calculateShortestPath()
+    self.currentPath = self._calculateShortestPath()
     while rocksToPlace > 0:
       # Generate a random position
       randomRow, randomCol = self._randomPos()
@@ -351,10 +349,10 @@ class PatheryEnv(gym.Env):
       
       # Place the rock and test if a path still exists
       self.grid[randomRow][randomCol] = CellType.ROCK.value
-      needToRePath = len(self.lastPath) == 0 or (randomRow, randomCol) in self.lastPath
+      needToRePath = len(self.currentPath) == 0 or (randomRow, randomCol) in self.currentPath
       if needToRePath:
-        self.lastPath = self._calculateShortestPath()
-      shortestPathLength = len(self.lastPath)
+        self.currentPath = self._calculateShortestPath()
+      shortestPathLength = len(self.currentPath)
       if shortestPathLength != 0:
         # Success
         self.rocks.append((int(randomRow),int(randomCol)))
