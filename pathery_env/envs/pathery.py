@@ -244,8 +244,9 @@ class PatheryEnv(gym.Env):
     #   u[0-9]+: Teleporter "OUT"
     metadata, map = map_string.split(':', 1)
     width, height, numWalls, name, *rest = metadata.split('.')
-    if len(rest) > 3 or (len(rest) == 3 and any(x != '' for x in rest)):
-        raise ValueError(f'Invalid metadata format: {metadata}')
+    if len(rest) > 3 or (len(rest) == 3 and any(x != '' for x in rest[:-1])):
+      # So far, I have only seen all but the last item after the name be empty
+      raise ValueError(f'Invalid metadata format: {metadata}')
     # Get size and wall count from map string
     self.gridSize = (int(height), int(width))
     self.wallsToPlace = int(numWalls)
