@@ -24,7 +24,10 @@ class Teleporter:
   outPositions: List[Tuple[int, int]]
 
 def createRandomNormal(render_mode, **kwargs):
-  return PatheryEnv.randomNormal(render_mode, **kwargs)
+  return PatheryEnv.randomMap(render_mode, map_type="Normal", **kwargs)
+
+def createRandomUltraComplexUnlimited(render_mode, **kwargs):
+  return PatheryEnv.randomMap(render_mode, map_type="Ultra Complex Unlimited", **kwargs)
 
 def fromMapString(render_mode, map_string, **kwargs):
   return PatheryEnv.fromMapString(render_mode, map_string, **kwargs)
@@ -34,14 +37,14 @@ class PatheryEnv(gym.Env):
   metadata = {"render_modes": ["ansi"], "render_fps": 4}
 
   @classmethod
-  def randomNormal(cls, render_mode, **kwargs):
-    return cls(render_mode=render_mode, **kwargs)
+  def randomMap(cls, render_mode, map_type, **kwargs):
+    return cls(render_mode=render_mode, map_type=map_type, **kwargs)
 
   @classmethod
   def fromMapString(cls, render_mode, map_string, **kwargs):
     return cls(render_mode=render_mode, map_string=map_string, **kwargs)
 
-  def __init__(self, render_mode, map_string=None):
+  def __init__(self, render_mode, map_string=None, map_type=None):
     self._tryLoadingCppPathfindingLibrary()
     self.randomMap = (map_string == None)
 
@@ -55,16 +58,24 @@ class PatheryEnv(gym.Env):
     if map_string is not None:
       self._initializeFromMapString(map_string)
     else:
+      assert map_type in ["Normal", "Ultra Complex Unlimited"], f"Invalid map type: {map_type}"
       # Size and wall count are hard coded for random maps
-      self.gridSize = (9, 17)
-      self.wallsToPlace = 14
-      self.maxCheckpointCount = 2
+      self.map_type = map_type
+      if self.map_type == "Normal":
+        self.gridSize = (9, 17)
+        self.wallsToPlace = 14
+        self.maxCheckpointCount = 2
+      elif self.map_type == "Ultra Complex Unlimited":
+        self.gridSize = (19, 27)
+        self.wallsToPlace = 999
+        self.maxCheckpointCount = 9
 
     self.cellTypeCount = len(CellType) + self.maxCheckpointCount + len(self.teleporters)*2
 
     # Observation space: Each cell type is a discrete value, checkpoints and teleporters are dynamically added on the end
     self.observation_space = spaces.Dict()
-    self.observation_space[PatheryEnv.OBSERVATION_BOARD_STR] = spaces.Box(low=0.0, high=1.0, shape=(self.cellTypeCount, self.gridSize[0], self.gridSize[1]))
+    layerCount = self.cellTypeCount + 1  # +1 for the current path layer
+    self.observation_space[PatheryEnv.OBSERVATION_BOARD_STR] = spaces.Box(low=0.0, high=1.0, shape=(layerCount, self.gridSize[0], self.gridSize[1]))
 
     # Possible actions are which 2d position to place a wall in
     self.action_space = spaces.MultiDiscrete((self.gridSize[0], self.gridSize[1]))
@@ -89,20 +100,55 @@ class PatheryEnv(gym.Env):
       self.goalPositions = []
       self.rocks = []
       self.checkpoints = []
+      self.ice = []
 
-      # Choose a random start along the left edge
-      randomStartPos = (self.np_random.integers(low=0, high=self.gridSize[0], dtype=np.int32), 0)
-      self.startPositions.append(randomStartPos)
-      # TODO: Once we start generating multiple starts, make sure to sort them. Order matters in case there is a tie when calculating the shortest path.
+      if self.map_type == "Normal":
+        # Choose a random start along the left edge
+        randomStartPos = (self.np_random.integers(low=0, high=self.gridSize[0], dtype=np.int32), 0)
+        self.startPositions.append(randomStartPos)
+      elif self.map_type == "Ultra Complex Unlimited":
+        # Starts are on the left edge, alternating start, rock, start, rock, etc.
+        for row in range(self.gridSize[0]):
+          if row % 2 == 0:
+            self.startPositions.append((row, 0))
+      # Sort by column, then by row
+      self.startPositions = sorted(self.startPositions, key=lambda v: v[1])
+      self.startPositions = sorted(self.startPositions, key=lambda v: v[0])
 
       # All other cells on the left edge must be a rock
       for row in range(self.gridSize[0]):
-        if row != randomStartPos[0]:
+        if (row,0) not in self.startPositions:
           self.rocks.append((row, 0))
 
-      # For normal puzzles, every cell on the right edge is a goal
+      if self.map_type == "Normal":
+        # For normal puzzles, every cell on the right edge is a goal
+        for row in range(self.gridSize[0]):
+          self.goalPositions.append((row, self.gridSize[1]-1))
+      elif self.map_type == "Ultra Complex Unlimited":
+        # For ultra complex unlimited puzzles, the cells on the right alternate rock, goal, rock, goal, etc.
+        for row in range(self.gridSize[0]):
+          if row % 2 == 1:
+            self.goalPositions.append((row, self.gridSize[1]-1))
+
+      # All other cells on the right edge must be a rock
       for row in range(self.gridSize[0]):
-        self.goalPositions.append((row, self.gridSize[1]-1))
+        if (row,self.gridSize[1]-1) not in self.goalPositions:
+          self.rocks.append((row, self.gridSize[1]-1))
+
+      # Place ice randomly
+      if self.map_type == "Ultra Complex Unlimited":
+        iceCount = self.np_random.integers(low=4, high=11, dtype=np.int32)
+
+        for _ in range(iceCount):
+          while True:
+            row = self.np_random.integers(low=0, high=self.gridSize[0], dtype=np.int32)
+            col = self.np_random.integers(low=0, high=self.gridSize[1], dtype=np.int32)
+            pos = (row, col)
+            if pos in self.startPositions or pos in self.goalPositions or pos in self.rocks:
+              continue
+            self.grid[row][col] = CellType.ICE.value
+            self.ice.append((row, col))
+            break
 
       # Pick checkpoints
       self._generateRandomCheckpoints(checkpointCount=self.maxCheckpointCount)
@@ -141,7 +187,7 @@ class PatheryEnv(gym.Env):
     if self.randomMap:
       # Pick rocks
       # This also sets self.currentPath
-      self._generateRandomRocks(rocksToPlace=14)
+      self._generateRandomRocks()
     else:
       self.currentPath = self._calculateShortestPath()
 
@@ -250,6 +296,7 @@ class PatheryEnv(gym.Env):
     # Get size and wall count from map string
     self.gridSize = (int(height), int(width))
     self.wallsToPlace = int(numWalls)
+    self.map_type = name
     # Save rocks, start(s), goal(s), and checkpoint(s) from map string
     mapCells = map.split('.')
     currentIndex = -1
@@ -302,9 +349,12 @@ class PatheryEnv(gym.Env):
 
   def _get_obs(self):
     # Expand flat grid with different cell types to one-hots for each cell position.
-    oneHot = np.zeros((self.cellTypeCount,)+self.grid.shape, dtype=np.float32)
+    oneHot = np.zeros((self.cellTypeCount+1,)+self.grid.shape, dtype=np.float32)
     for i in range(self.cellTypeCount):
       oneHot[i] = (self.grid == i)
+
+    # Add one layer with the current path
+    oneHot[-1, self.currentPath[:,0], self.currentPath[:,1]] = 1.0
     return {
       PatheryEnv.OBSERVATION_BOARD_STR: oneHot
     }
@@ -323,24 +373,31 @@ class PatheryEnv(gym.Env):
     col = self.np_random.integers(low=0, high=self.gridSize[1], dtype=np.int32)
     return (row, col)
 
-  def _generateRandomCheckpoints(self,checkpointCount):
-    checkpointVal = len(CellType)
+  def _generateRandomCheckpoints(self, checkpointCount):
+    checkpointVal = 0
     while checkpointCount>0:
       row, col = self._randomPos()
       pos = (int(row), int(col))
 
       # Check if the cell is open
-      if pos in self.startPositions or pos in self.goalPositions or pos in self.rocks or any(pos == t[:len(pos)] for t in self.checkpoints):
+      if pos in self.startPositions or pos in self.goalPositions or pos in self.rocks or pos in self.ice or any(pos == t[:len(pos)] for t in self.checkpoints):
         continue
-      
+
       # Place the checkpoint
       self.checkpoints.append((int(row), int(col), checkpointVal))
       checkpointVal += 1
       checkpointCount -= 1
 
-    
-  def _generateRandomRocks(self, rocksToPlace:int):
+
+  def _generateRandomRocks(self):
     """Generates a random grid where it is possible to reach the end"""
+    if self.map_type == "Normal":
+      rocksToPlace = 14
+    elif self.map_type == "Ultra Complex Unlimited":
+      rocksToPlace = 32
+    else:
+      raise ValueError(f"Invalid map type: {self.map_type}. Cannot generate random rocks.")
+
     self.currentPath = self._calculateShortestPath()
     while rocksToPlace > 0:
       # Generate a random position
@@ -349,7 +406,7 @@ class PatheryEnv(gym.Env):
       # Can only place rocks in open cells
       if self.grid[randomRow][randomCol] != CellType.OPEN.value:
         continue
-      
+
       # Place the rock and test if a path still exists
       self.grid[randomRow][randomCol] = CellType.ROCK.value
       needToRePath = len(self.currentPath) == 0 or (randomRow, randomCol) in self.currentPath
@@ -367,11 +424,11 @@ class PatheryEnv(gym.Env):
   def _calculateShortestSubpath(self, subStartPos, goalType):
     # Directions for moving: up, right, down, left (this is the order preferred by Pathery)
     directions = [(-1, 0), (0, 1), (1, 0), (0, -1)]
-    
+
     # Create a queue for BFS and add the starting point
     start = (subStartPos, None)
     queue = deque([start])
-    
+
     # Set of visited nodes
     visited = set()
     visited.add(start)
@@ -380,23 +437,23 @@ class PatheryEnv(gym.Env):
     def buildPath(end):
       path = []
       while end in prev:
-        path.append(end[0])
+        path.append((int(end[0][0]), int(end[0][1])))
         end = prev[end]
       return path[::-1]
-    
+
     while queue:
       current = queue.popleft()
       currentPosition, currentDirection = current
-      
+
       # If the current position is the goal, return the path
       if self.grid[currentPosition[0]][currentPosition[1]] == goalType:
         return buildPath(current)
-      
+
       # Explore all the possible directions
       for direction in (directions if currentDirection is None else [currentDirection]):
         # Calculate the next position
         nextPosition = (currentPosition[0] + direction[0], currentPosition[1] + direction[1])
-        
+
         # Check if the next position is within the grid bounds
         if (0 <= nextPosition[0] < self.gridSize[0]) and (0 <= nextPosition[1] < self.gridSize[1]):
           # Check if the next position is not an obstacle and not visited
@@ -407,7 +464,7 @@ class PatheryEnv(gym.Env):
               queue.append(next)
               visited.add(next)
               prev[next] = current
-    
+
     # There is no path to the goal
     return []
 
@@ -490,7 +547,7 @@ class PatheryEnv(gym.Env):
       return []
     overallPath.extend(finalSubPath)
 
-    return overallPath
+    return np.array(overallPath)
 
   def _calculateShortestPathCpp(self):
     # Need to give C++:
@@ -503,7 +560,7 @@ class PatheryEnv(gym.Env):
 
     # Allocate an output buffer for the result. The first integer will hold the path length. The remaining will be 2 values for row,col for each position on the path.
     # TODO: This buffer will not always be big enough to hold the path. C++ will throw an exception if the path does not fit.
-    outputBufferLength = np.prod(self.gridSize)*2*10+1
+    outputBufferLength = 1 + np.prod(self.gridSize)*2*10
     shortestPathOutputBuffer = np.empty(outputBufferLength, dtype=np.int32)
 
     # Call the C++ function

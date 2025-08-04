@@ -32,6 +32,6 @@ class ActionMaskObservationWrapper(gym.ObservationWrapper):
     return super().step(action)
 
   def observation(self, observation):
-    mask = (observation[PatheryEnv.OBSERVATION_BOARD_STR][CellType.OPEN.value] == 1.0)
-    observation[ActionMaskObservationWrapper.OBSERVATION_ACTION_MASK_STR] = mask.astype(np.int8)
+    mask = np.where(observation[PatheryEnv.OBSERVATION_BOARD_STR][CellType.OPEN.value], 1, 0)
+    observation[ActionMaskObservationWrapper.OBSERVATION_ACTION_MASK_STR] = mask
     return observation

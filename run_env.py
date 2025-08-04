@@ -21,6 +21,7 @@ def isWrappedBy(env, wrapper_type):
   return False
 
 if __name__ == "__main__":
+  # env = gym.make('pathery_env/Pathery-RandomUltraComplexUnlimited', render_mode='ansi')
   # env = gym.make('pathery_env/Pathery-RandomNormal', render_mode='ansi')
   env = gym.make('pathery_env/Pathery-FromMapString', render_mode='ansi', map_string=mapString)
 

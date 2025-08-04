@@ -6,6 +6,11 @@ register(
 )
 
 register(
+  id="pathery_env/Pathery-RandomUltraComplexUnlimited",
+  entry_point="pathery_env.envs:createRandomUltraComplexUnlimited",
+)
+
+register(
   id="pathery_env/Pathery-FromMapString",
   entry_point="pathery_env.envs:fromMapString",
 )
