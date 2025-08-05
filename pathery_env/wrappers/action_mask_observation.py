@@ -32,6 +32,8 @@ class ActionMaskObservationWrapper(gym.ObservationWrapper):
     return super().step(action)
 
   def observation(self, observation):
-    mask = np.where(observation[PatheryEnv.OBSERVATION_BOARD_STR][CellType.OPEN.value], 1, 0)
-    observation[ActionMaskObservationWrapper.OBSERVATION_ACTION_MASK_STR] = mask
+    # Values of 1 when the action is valid, 0 when it is not
+    openCellMask = np.where(observation[PatheryEnv.OBSERVATION_BOARD_STR][CellType.OPEN.value], 1, 0)
+    shortestPathMask = np.where(observation[PatheryEnv.OBSERVATION_BOARD_STR][-1], 1, 0)
+    observation[ActionMaskObservationWrapper.OBSERVATION_ACTION_MASK_STR] = np.logical_and(openCellMask, shortestPathMask)
     return observation

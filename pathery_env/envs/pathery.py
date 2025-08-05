@@ -353,7 +353,7 @@ class PatheryEnv(gym.Env):
     for i in range(self.cellTypeCount):
       oneHot[i] = (self.grid == i)
 
-    # Add one layer with the current path
+    # Add one layer with the current path. This layer is the last layer
     oneHot[-1, self.currentPath[:,0], self.currentPath[:,1]] = 1.0
     return {
       PatheryEnv.OBSERVATION_BOARD_STR: oneHot
