@@ -201,11 +201,12 @@ class PatheryEnv(gym.Env):
 
   def step(self, action):
     tupledAction = (action[0], action[1])
-    if self.grid[tupledAction[0]][tupledAction[1]] != CellType.OPEN.value:
+    row, col = tupledAction
+    if self.grid[row][col] != CellType.OPEN.value:
       # Invalid position; reward is 0, episode terminates
       return self._get_obs(), 0, True, False, self._get_info()
 
-    self.grid[tupledAction[0]][tupledAction[1]] = CellType.WALL.value
+    self.grid[row][col] = CellType.WALL.value
     self.remainingWalls -= 1
     terminated = self.remainingWalls == 0
 
@@ -580,7 +581,7 @@ class PatheryEnv(gym.Env):
       CellType.ICE: '░'  # Ice cells
     }
 
-    def getChar(val):
+    def getChar(val, rowNum, colNum):
       if val >= len(CellType):
         # Is either a checkpoint or a teleporter.
         if val >= len(CellType) + self.maxCheckpointCount:
@@ -592,13 +593,19 @@ class PatheryEnv(gym.Env):
         else:
           # Return a character for checkpoints. First checkpoint is A, second is B, etc.
           return chr(ord('A') + val - len(CellType))
-      # Is neither a checkpoint or teleporter, use the character mapping for the CellType.
+      # Is neither a checkpoint or teleporter
+      # If it is an open cell check if it is on the shortest path
+      if CellType(val) == CellType.OPEN:
+        coord = np.array([int(rowNum), int(colNum)])
+        if (self.currentPath == coord).all(axis=1).any():
+          return '.'
+      # Is not on the shortest path, use the character mapping for the CellType.
       return ansi_map[CellType(val)]
 
     top_border = "+" + "-" * (self.gridSize[1] * 2 - 1) + "+"
     output = top_border + '\n'
-    for row in self.grid:
-      output += '|' + '|'.join(getChar(val) for val in row) + '|\n'
+    for rowNum, row in enumerate(self.grid):
+      output += '|' + '|'.join(getChar(val, rowNum, colNum) for colNum, val in enumerate(row)) + '|\n'
     output += top_border + '\n'
     output += f'Remaining walls: {self.remainingWalls}'
     return output
