@@ -62,10 +62,12 @@ class PatheryEnv(gym.Env):
       # Size and wall count are hard coded for random maps
       self.map_type = map_type
       if self.map_type == "Normal":
+        # gridSize is rows, columns
         self.gridSize = (9, 17)
         self.wallsToPlace = 14
         self.maxCheckpointCount = 2
       elif self.map_type == "Ultra Complex Unlimited":
+        # gridSize is rows, columns
         self.gridSize = (19, 27)
         self.wallsToPlace = 999
         self.maxCheckpointCount = 9
@@ -137,12 +139,17 @@ class PatheryEnv(gym.Env):
 
       # Place ice randomly
       if self.map_type == "Ultra Complex Unlimited":
-        iceCount = self.np_random.integers(low=4, high=11, dtype=np.int32)
+        # We collected 1000 randomly generated maps from Pathery.com and created a histogram of the number of ice cells in each map.
+        # We will use this histogram to randomly generate ice cells in a similar way.
+        values = np.array([4,5,6,7,8,9,10,11,12,13], dtype=np.int32)
+        counts = np.array([203,23,374,65,233,37,57,5,2,1], dtype=np.float64)
+        probs = counts / counts.sum()
+        iceCount = self.np_random.choice(values, p=probs)
 
         for _ in range(iceCount):
           while True:
-            row = self.np_random.integers(low=0, high=self.gridSize[0], dtype=np.int32)
-            col = self.np_random.integers(low=0, high=self.gridSize[1], dtype=np.int32)
+            row = self.np_random.integers(low=1, high=self.gridSize[0]-1, dtype=np.int32)
+            col = self.np_random.integers(low=2, high=self.gridSize[1]-2, dtype=np.int32)
             pos = (row, col)
             if pos in self.startPositions or pos in self.goalPositions or pos in self.rocks:
               continue
@@ -171,7 +178,8 @@ class PatheryEnv(gym.Env):
 
     # Place checkpoints
     for row, col, checkpointIndex in self.checkpoints:
-      self.grid[row][col] = self._checkpointIndexToCellValue(checkpointIndex)
+      checkpointCellValue = self._checkpointIndexToCellValue(checkpointIndex)
+      self.grid[row][col] = checkpointCellValue
 
     # Place teleporters
     for index, teleporter in self.teleporters.items():
@@ -187,7 +195,10 @@ class PatheryEnv(gym.Env):
     if self.randomMap:
       # Pick rocks
       # This also sets self.currentPath
-      self._generateRandomRocks()
+      while True:
+        success = self._generateRandomRocks()
+        if success:
+          break
     else:
       self.currentPath = self._calculateShortestPath()
 
@@ -369,40 +380,81 @@ class PatheryEnv(gym.Env):
     # Initialize grid with OPEN cells (which have value 0)
     self.grid = np.zeros(self.gridSize, dtype=np.int32)
 
-  def _randomPos(self):
-    row = self.np_random.integers(low=0, high=self.gridSize[0], dtype=np.int32)
-    col = self.np_random.integers(low=0, high=self.gridSize[1], dtype=np.int32)
+  def _randomPos(self, minRow, maxRow, minCol, maxCol):
+    row = self.np_random.integers(low=minRow, high=maxRow, dtype=np.int32, endpoint=True)
+    col = self.np_random.integers(low=minCol, high=maxCol, dtype=np.int32, endpoint=True)
     return (row, col)
 
   def _generateRandomCheckpoints(self, checkpointCount):
-    checkpointVal = 0
-    while checkpointCount>0:
-      row, col = self._randomPos()
+    if self.map_type == "Normal":
+      checkpointMinRow = 0
+      checkpointMaxRow = self.gridSize[0] - 1
+      checkpointMinCol = 0
+      checkpointMaxCol = self.gridSize[1] - 1
+      # Normal puzzles simply have one of each checkpoint
+      checkpoints = np.arange(checkpointCount, dtype=np.int32)
+    elif self.map_type == "Ultra Complex Unlimited":
+      # Checkpoints in UCU are not placed on the outside edges.
+      checkpointMinRow = 1
+      checkpointMaxRow = self.gridSize[0] - 2
+      checkpointMinCol = 2
+      checkpointMaxCol = self.gridSize[1] - 3
+      # UCU puzzles a fixed number of unique checkpoints, but the first 7 checkpoints see to have a 10% chance of occurring twice.
+      checkpoints = []
+      for i in range(checkpointCount):
+        checkpoints.append(i)
+        if i < 7 and self.np_random.random() < 0.1:
+          checkpoints.append(i)
+      checkpoints = np.array(checkpoints, dtype=np.int32)
+    else:
+      raise ValueError(f"Invalid map type: {self.map_type}. Cannot generate random checkpoints.")
+
+    index = 0
+    while index < len(checkpoints):
+      checkpointIndex = checkpoints[index]
+      row, col = self._randomPos(checkpointMinRow, checkpointMaxRow, checkpointMinCol, checkpointMaxCol)
       pos = (int(row), int(col))
 
       # Check if the cell is open
-      if pos in self.startPositions or pos in self.goalPositions or pos in self.rocks or pos in self.ice or any(pos == t[:len(pos)] for t in self.checkpoints):
+      if (pos in self.startPositions or
+          pos in self.goalPositions or
+          pos in self.rocks or
+          pos in self.ice or any(pos == t[:len(pos)] for t in self.checkpoints)):
         continue
 
       # Place the checkpoint
-      self.checkpoints.append((int(row), int(col), checkpointVal))
-      checkpointVal += 1
-      checkpointCount -= 1
-
+      self.checkpoints.append((int(row), int(col), int(checkpointIndex)))
+      index += 1
 
   def _generateRandomRocks(self):
     """Generates a random grid where it is possible to reach the end"""
     if self.map_type == "Normal":
+      rockMinRow = 0
+      rockMaxRow = self.gridSize[0] - 1
+      rockMinCol = 0
+      rockMaxCol = self.gridSize[1] - 1
       rocksToPlace = 14
     elif self.map_type == "Ultra Complex Unlimited":
-      rocksToPlace = 32
+      # Rocks in UCU, apart from the ones near the starts/goals, are not placed on the outside edges.
+      rockMinRow = 1
+      rockMaxRow = self.gridSize[0] - 2
+      rockMinCol = 2
+      rockMaxCol = self.gridSize[1] - 3
+      # We collected 1000 randomly generated maps from Pathery.com and created a histogram of the number of rock cells in each map.
+      # We will use this histogram to randomly generate rock cells in a similar way.
+      rockCounts = np.array([26, 30, 34, 38], dtype=np.int32)
+      occurrenceCounts = np.array([189, 460, 291, 60], dtype=np.float64)
+      probs = occurrenceCounts / occurrenceCounts.sum()
+      rocksToPlace = self.np_random.choice(rockCounts, p=probs)
     else:
       raise ValueError(f"Invalid map type: {self.map_type}. Cannot generate random rocks.")
 
     self.currentPath = self._calculateShortestPath()
+    failureCount = 0
+    failureCountMax = 100
     while rocksToPlace > 0:
       # Generate a random position
-      randomRow, randomCol = self._randomPos()
+      randomRow, randomCol = self._randomPos(rockMinRow, rockMaxRow, rockMinCol, rockMaxCol)
 
       # Can only place rocks in open cells
       if self.grid[randomRow][randomCol] != CellType.OPEN.value:
@@ -418,9 +470,15 @@ class PatheryEnv(gym.Env):
         # Success
         self.rocks.append((int(randomRow),int(randomCol)))
         rocksToPlace -= 1
+        failureCount = 0
       else:
         # Failed to place here, reset the cell
         self.grid[randomRow][randomCol] = CellType.OPEN.value
+        failureCount += 1
+        if failureCount > failureCountMax:
+          print(f"Failed to place rocks after {failureCountMax} attempts")
+          return False
+    return True
 
   def _calculateShortestSubpath(self, subStartPos, goalType):
     # Directions for moving: up, right, down, left (this is the order preferred by Pathery)
