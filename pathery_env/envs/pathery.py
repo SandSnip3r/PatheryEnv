@@ -66,13 +66,15 @@ class PatheryEnv(gym.Env):
         self.gridSize = (9, 17)
         self.wallsToPlace = 14
         self.maxCheckpointCount = 2
+        self.teleporterCount = 0
       elif self.map_type == "Ultra Complex Unlimited":
         # gridSize is rows, columns
         self.gridSize = (19, 27)
         self.wallsToPlace = 999
         self.maxCheckpointCount = 9
+        self.teleporterCount = 4
 
-    self.cellTypeCount = len(CellType) + self.maxCheckpointCount + len(self.teleporters)*2
+    self.cellTypeCount = len(CellType) + self.maxCheckpointCount + self.teleporterCount*2
 
     # Observation space: Each cell type is a discrete value, checkpoints and teleporters are dynamically added on the end
     self.observation_space = spaces.Dict()
@@ -160,6 +162,9 @@ class PatheryEnv(gym.Env):
       # Pick checkpoints
       self._generateRandomCheckpoints(checkpointCount=self.maxCheckpointCount)
 
+      # Pick teleporters
+      self._generateRandomTeleporters()
+
     # Place the start(s)
     for startPos in self.startPositions:
       self.grid[startPos[0]][startPos[1]] = CellType.START.value
@@ -181,15 +186,15 @@ class PatheryEnv(gym.Env):
       checkpointCellValue = self._checkpointIndexToCellValue(checkpointIndex)
       self.grid[row][col] = checkpointCellValue
 
+    # Save checkpoint indices (rather than needing to repeatedly dedup them on every pathfind)
+    self.checkpointIndices = sorted(list({self._checkpointIndexToCellValue(index) for _,_,index in self.checkpoints}))
+
     # Place teleporters
     for index, teleporter in self.teleporters.items():
       for inPos in teleporter.inPositions:
         self.grid[inPos[0]][inPos[1]] = self._teleporterIndexToCellValue(index, isIn=True)
       for outPos in teleporter.outPositions:
         self.grid[outPos[0]][outPos[1]] = self._teleporterIndexToCellValue(index, isIn=False)
-
-    # Save checkpoint indices (rather than needing to repeatedly dedup them on every pathfind)
-    self.checkpointIndices = sorted(list({self._checkpointIndexToCellValue(index) for _,_,index in self.checkpoints}))
 
     # Finally, random rock placement must be done after everything else has been placed so that we can check that no rock blocks any path
     if self.randomMap:
@@ -355,6 +360,9 @@ class PatheryEnv(gym.Env):
     # Count the number of unique checkpoint indices using a set
     self.maxCheckpointCount = len({x[2] for x in self.checkpoints})
 
+    # Count the number of unique teleporters
+    self.teleporterCount = len(self.teleporters)
+
     # Stably sort the start positions. First on column, then on row.
     self.startPositions.sort(key=lambda v : v[1])
     self.startPositions.sort(key=lambda v : v[0])
@@ -426,6 +434,56 @@ class PatheryEnv(gym.Env):
       self.checkpoints.append((int(row), int(col), int(checkpointIndex)))
       index += 1
 
+  def _generateRandomTeleporters(self):
+    if self.map_type == "Normal":
+      teleporterMinRow = 0
+      teleporterMaxRow = self.gridSize[0] - 1
+      teleporterMinCol = 0
+      teleporterMaxCol = self.gridSize[1] - 1
+    elif self.map_type == "Ultra Complex Unlimited":
+      # Teleporters in UCU are not placed on the outside edges.
+      teleporterMinRow = 1
+      teleporterMaxRow = self.gridSize[0] - 2
+      teleporterMinCol = 2
+      teleporterMaxCol = self.gridSize[1] - 3
+    else:
+      raise ValueError(f"Invalid map type: {self.map_type}. Cannot generate random teleporters.")
+
+    def posIsAlreadyTeleporter(pos):
+      """Check if the position is already occupied by a teleporter."""
+      for teleporter in self.teleporters.values():
+        if (pos in teleporter.inPositions) or (pos in teleporter.outPositions):
+          return True
+      return False
+
+    teleporterIndex = 0
+    while teleporterIndex < self.teleporterCount:
+      inRow, inCol = self._randomPos(teleporterMinRow, teleporterMaxRow, teleporterMinCol, teleporterMaxCol)
+      inPos = (int(inRow), int(inCol))
+
+      # Check if the cell is open
+      if (inPos in self.startPositions or
+          inPos in self.goalPositions or
+          inPos in self.rocks or
+          inPos in self.ice or any(inPos == t[:len(inPos)] for t in self.checkpoints) or
+          posIsAlreadyTeleporter(inPos)):
+        continue
+
+      outRow, outCol = self._randomPos(teleporterMinRow, teleporterMaxRow, teleporterMinCol, teleporterMaxCol)
+      outPos = (int(outRow), int(outCol))
+
+      # Check if the cell is open
+      if (outPos in self.startPositions or
+          outPos in self.goalPositions or
+          outPos in self.rocks or
+          outPos in self.ice or any(outPos == t[:len(outPos)] for t in self.checkpoints) or
+          posIsAlreadyTeleporter(outPos) or
+          np.all(inPos == outPos)):
+        continue
+
+      self.teleporters[teleporterIndex] = Teleporter([(inRow, inCol)], [(outRow, outCol)])
+      teleporterIndex += 1
+
   def _generateRandomRocks(self):
     """Generates a random grid where it is possible to reach the end"""
     if self.map_type == "Normal":
@@ -477,6 +535,7 @@ class PatheryEnv(gym.Env):
         failureCount += 1
         if failureCount > failureCountMax:
           print(f"Failed to place rocks after {failureCountMax} attempts")
+          print(render())
           return False
     return True
 
@@ -623,7 +682,7 @@ class PatheryEnv(gym.Env):
     shortestPathOutputBuffer = np.empty(outputBufferLength, dtype=np.int32)
 
     # Call the C++ function
-    self.pathfindingLibrary.getShortestPath(self.grid, self.gridSize[0], self.gridSize[1], self.maxCheckpointCount, len(self.teleporters), shortestPathOutputBuffer, outputBufferLength)
+    self.pathfindingLibrary.getShortestPath(self.grid, self.gridSize[0], self.gridSize[1], self.maxCheckpointCount, self.teleporterCount, shortestPathOutputBuffer, outputBufferLength)
 
     # Transform and return the path
     pathLength = shortestPathOutputBuffer[0]
